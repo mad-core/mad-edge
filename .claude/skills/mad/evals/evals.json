@@ -1,0 +1,23 @@
+{
+  "skill_name": "mad",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I want to spin up an isolated Claude container on Ubuntu to work on a project at ~/software_projects/my-app. What do I need to do?",
+      "expected_output": "Should check prerequisites (Docker running, .env token configured), then guide the user to run spawn.sh with --project flag pointing to their app directory. Should mention that the image auto-builds if it doesn't exist.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "How does authentication work in the containers? I want to deploy these to a cloud server eventually.",
+      "expected_output": "Should explain the three auth methods (OAuth token, API key, interactive login), recommend OAuth token for local and API key for cloud/production, cover token lifecycle (1 year expiry), manual generation requirement, and secrets management for cloud deployment.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Build all the container images and tell me if everything looks good",
+      "expected_output": "Should check Docker is running first, then execute build-all.sh, report results for each distro (ubuntu, alpine, debian), and flag any build failures with troubleshooting advice.",
+      "files": []
+    }
+  ]
+}

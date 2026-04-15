@@ -1,0 +1,26 @@
+FROM ubuntu:24.04
+
+ARG HOST_UID=501
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    git \
+    ripgrep \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -m -s /bin/bash -u ${HOST_UID} claude
+
+USER claude
+WORKDIR /home/claude
+
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+ENV PATH="/home/claude/.local/bin:${PATH}"
+
+# Skip onboarding wizard (theme picker + login prompt)
+RUN echo '{"hasCompletedOnboarding":true,"shiftEnterKeyBindingInstalled":true,"theme":"dark"}' > /home/claude/.claude.json
+
+VOLUME ["/home/claude/.claude"]
+
+ENTRYPOINT ["/bin/bash"]

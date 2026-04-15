@@ -1,0 +1,58 @@
+x-claude-common: &claude-common
+  stdin_open: true
+  tty: true
+  environment:
+    - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+    - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    - DISABLE_AUTOUPDATER=1
+    - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+    - TERM=xterm-256color
+  deploy:
+    resources:
+      limits:
+        cpus: "2.0"
+        memory: 4G
+      reservations:
+        memory: 2G
+
+services:
+  claude-ubuntu:
+    <<: *claude-common
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.ubuntu
+      args:
+        HOST_UID: ${HOST_UID:-501}
+    container_name: claude-ubuntu
+    volumes:
+      - claude-ubuntu-config:/home/claude/.claude
+      - ./workspace:/home/claude/workspace
+
+  claude-alpine:
+    <<: *claude-common
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.alpine
+      args:
+        HOST_UID: ${HOST_UID:-501}
+    container_name: claude-alpine
+    volumes:
+      - claude-alpine-config:/home/claude/.claude
+      - ./workspace:/home/claude/workspace
+
+  claude-debian:
+    <<: *claude-common
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.debian
+      args:
+        HOST_UID: ${HOST_UID:-501}
+    container_name: claude-debian
+    volumes:
+      - claude-debian-config:/home/claude/.claude
+      - ./workspace:/home/claude/workspace
+
+volumes:
+  claude-ubuntu-config:
+  claude-alpine-config:
+  claude-debian-config:
