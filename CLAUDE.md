@@ -61,21 +61,16 @@ If the state is NOT stable, do not commit. Report what blocks stability and leav
 
 ## Commands
 
+All day-to-day commands are wrapped in the `Makefile` — run `make help` for the full list. Quick reference:
+
 ```bash
-# Set up the environment (operator's job, done once)
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .                  # install the `mad` package in editable mode
-
-# Run the test suite
-pytest -q
-
-# Run the server locally (factory mode — create_app() builds a fresh app)
-uvicorn mad.api.app:create_app --factory --host 0.0.0.0 --port 8000
-# …or via the console script declared in pyproject.toml
-mad serve
+make install   # create venv + `pip install -e '.[dev]'`
+make test      # pytest -q
+make serve     # uvicorn mad.api.app:create_app --factory (HOST=/PORT= override)
+make clean     # drop caches, build artifacts, sessions/
 ```
+
+The `mad` console script (`mad serve`) is also available once the package is installed.
 
 ## Key files
 

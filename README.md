@@ -17,12 +17,13 @@ Early days. The first milestone is **Mad** — a self-hosted API that provisions
 Mad ships as a pip-installable Python package (`mad`). From a checkout:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .            # editable install — uses pyproject.toml
-pytest -q                   # run the test suite
-mad serve                   # or: uvicorn mad.api.app:create_app --factory
+make install   # create venv + editable install with dev deps
+make test      # run the pytest suite
+make serve     # uvicorn factory (override HOST=/PORT= if needed)
+make help      # list every target
 ```
+
+All commands are wrapped by the `Makefile`; the raw equivalents live in `pyproject.toml` (the `mad` console script) and in the project documentation.
 
 ## Project structure
 
