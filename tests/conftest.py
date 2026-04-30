@@ -1,26 +1,75 @@
 from __future__ import annotations
 
 import subprocess
+from collections import deque
 from pathlib import Path
+from typing import Callable, Awaitable
 
 import pytest
 from fastapi.testclient import TestClient
 
 from mad.api.app import create_app
 from mad.providers import factory
-from mad.providers.base import LLMProvider, ProviderResponse  # re-exported for tests
-from mad.providers.fake import FakeScriptedProvider
+
+
+# ---------------------------------------------------------------------------
+# FakeLauncher — test double for the new AgentLauncher protocol
+# ---------------------------------------------------------------------------
+
+class FakeLauncher:
+    """Test double for AgentLauncher.
+
+    Script a sequence of runs via .script(runs). Each element of `runs` is a
+    list of event dicts that will be emitted (in order) for one call to run().
+
+    If the scripted queue is exhausted, a default session.status_idle event is
+    emitted so tests that don't care about the response still terminate cleanly.
+    """
+
+    def __init__(self) -> None:
+        self._queue: deque[list[dict]] = deque()
+
+    def script(self, runs: list[list[dict]]) -> None:
+        """Pre-load the sequence of event-lists for upcoming run() calls."""
+        self._queue = deque(runs)
+
+    async def run(
+        self,
+        prompt: str,
+        workspace: Path,
+        emit: Callable[[str, dict], Awaitable[None]],
+    ) -> None:
+        """Emit the next scripted run's events, or a default idle event."""
+        if self._queue:
+            events = self._queue.popleft()
+        else:
+            events = [{"type": "session.status_idle", "stop_reason": "end_turn"}]
+
+        for event in events:
+            await emit(event["type"], event)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def fake_launcher(monkeypatch: pytest.MonkeyPatch) -> FakeLauncher:
+    """Return a FakeLauncher and monkeypatch get_launcher to return it."""
+    launcher = FakeLauncher()
+    monkeypatch.setattr(factory, "get_launcher", lambda name: launcher)
+    return launcher
+
+
+# Keep fake_provider as an alias so any remaining references don't break
+# immediately — but new tests MUST use fake_launcher.
+@pytest.fixture
+def fake_provider(fake_launcher: FakeLauncher) -> FakeLauncher:
+    return fake_launcher
 
 
 @pytest.fixture
-def fake_provider(monkeypatch: pytest.MonkeyPatch) -> FakeScriptedProvider:
-    provider = FakeScriptedProvider()
-    monkeypatch.setattr(factory, "get_provider", lambda name: provider)
-    return provider
-
-
-@pytest.fixture
-def client(fake_provider: FakeScriptedProvider) -> TestClient:
+def client(fake_launcher: FakeLauncher) -> TestClient:
     return TestClient(create_app())
 
 

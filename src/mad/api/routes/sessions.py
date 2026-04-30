@@ -9,18 +9,48 @@ from pathlib import Path
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from mad.agent.loop import run_agent_loop
 from mad.core import log
 from mad.core.resources import provision_file, provision_github_repo
 from mad.core.security import validate_mount_path
 from mad.core.sessions import SessionStore
 from mad.core.workspace import workspace_path
+from mad.providers import factory
 
 router = APIRouter()
 
 
 def _store(request: Request) -> SessionStore:
     return request.app.state.store
+
+
+async def _run_launcher(
+    store: SessionStore,
+    session_id: str,
+    session: dict,
+    prompt: str,
+) -> None:
+    store.emit_and_push(session_id, "session.status_running")
+    session["status"] = "running"
+    launcher = factory.get_launcher(session["agent"]["provider"])
+    workspace = Path(session["workspace"])
+
+    async def emit(event_type: str, data: dict | None = None) -> None:
+        store.emit_and_push(session_id, event_type, data)
+        if event_type == "session.status_idle":
+            session["status"] = "idle"
+        elif event_type == "session.error":
+            session["status"] = "error"
+
+    try:
+        await launcher.run(prompt=prompt, workspace=workspace, emit=emit)
+    except Exception as exc:
+        if session["status"] == "running":
+            store.emit_and_push(session_id, "session.error", {"error": str(exc)})
+            session["status"] = "error"
+    finally:
+        q = store.sse_queues.get(session_id)
+        if q is not None:
+            await q.put(None)
 
 
 @router.post("/v1/sessions")
@@ -95,7 +125,7 @@ async def send_events(session_id: str, request: Request) -> dict:
         if event_type == "user.message":
             content = event.get("content", "")
             log.emit(session_id, "user.message", {"content": content})
-            asyncio.create_task(run_agent_loop(store, session_id, session, content))
+            asyncio.create_task(_run_launcher(store, session_id, session, content))
 
     return {"status": "accepted"}
 

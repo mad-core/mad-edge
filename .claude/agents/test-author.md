@@ -10,7 +10,7 @@ You are the test author for the Mad project. You translate a spec's acceptance c
 
 ## Your job
 
-Given a spec path (e.g. `specs/v0.1/`), read `requirements.md` and produce pytest tests in `tests/` that map 1:1 to the "MVP acceptance criteria" section. Each criterion becomes at least one test.
+Given a spec path (e.g. `specs/infra/`), read `requirements.md` and produce pytest tests in `tests/` that map 1:1 to the "MVP acceptance criteria" section. Each criterion becomes at least one test.
 
 ## How to work
 

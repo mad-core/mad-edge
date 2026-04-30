@@ -1,19 +1,18 @@
-"""Acceptance tests mapped 1:1 to specs/v0.1/requirements.md → MVP acceptance criteria.
+"""Acceptance tests mapped 1:1 to specs/infra/requirements.md → MVP acceptance criteria.
 
 Acceptance criterion → test mapping:
-  AC-1  POST /v1/sessions clones repo into workspace                → test_mvp_01_*
-  AC-1b POST /v1/sessions provisions file resource                  → test_mvp_01b_*
-  AC-2  POST /v1/sessions/{id}/events sends user.message            → test_mvp_02_*
-  AC-2b POST /v1/sessions/{id}/events is non-blocking               → test_mvp_02b_*
-  AC-3  GET /v1/sessions/{id}/stream emits agent events             → test_mvp_03_*
-  AC-3b stream emits session.status_running and session.status_idle → test_mvp_03b_*
-  AC-4  GET /v1/sessions/{id} returns final state + every event     → test_mvp_04_*
-  AC-4b JSONL session log records every event                       → test_mvp_04b_*
-  AC-5  GET /v1/sessions lists past sessions                        → test_mvp_05_*
-  AC-6  Resume session with second user.message                     → test_mvp_06_*
-  AC-6b Resumed session log contains both turns                     → test_mvp_06b_*
-  AC-7  DELETE cleans workspace, preserves log                      → test_mvp_07_*
-  AC-8  Idempotency-Key returns same session, no double-clone       → test_mvp_08_*
+  AC-1  POST /v1/sessions with a GitHub repo → repo cloned in workspace → test_mvp_01_*
+  AC-1b POST /v1/sessions provisions file resource                       → test_mvp_01b_*
+  AC-2  POST /v1/sessions/{id}/events sends user.message                → test_mvp_02_*
+  AC-2b POST /v1/sessions/{id}/events is non-blocking                   → test_mvp_02b_*
+  AC-3b stream emits session.status_running and session.status_idle     → test_mvp_03b_*
+  AC-4  GET /v1/sessions/{id} returns final state + every event         → test_mvp_04_*
+  AC-4b JSONL session log records every event                           → test_mvp_04b_*
+  AC-5  GET /v1/sessions lists past sessions                            → test_mvp_05_*
+  AC-6  Resume session with second user.message                         → test_mvp_06_*
+  AC-6b Resumed session log contains both turns                         → test_mvp_06b_*
+  AC-7  DELETE cleans workspace, preserves log                          → test_mvp_07_*
+  AC-8  Idempotency-Key returns same session, no double-clone           → test_mvp_08_*
 
 These tests are EXPECTED to fail until the implementer runs (red TDD state).
 """
@@ -25,8 +24,6 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from mad.providers.base import ProviderResponse, ToolUse
-from mad.providers.fake import FakeScriptedProvider as FakeProvider
 
 # ---------------------------------------------------------------------------
 # AC-1: POST /v1/sessions with a GitHub repo → repo cloned in workspace
@@ -76,7 +73,7 @@ def test_mvp_01_create_session_response_shape(
 # ---------------------------------------------------------------------------
 
 def test_mvp_01b_create_session_provisions_file_resource(
-    client: TestClient, fake_provider: FakeProvider
+    client: TestClient, fake_launcher
 ) -> None:
     """A resource of type=file must be written to the mapped mount_path."""
     payload = {
@@ -101,7 +98,7 @@ def test_mvp_01b_create_session_provisions_file_resource(
 
 
 def test_mvp_01b_mixed_resources_provisioned(
-    client: TestClient, fake_provider: FakeProvider, bare_repo: Path
+    client: TestClient, fake_launcher, bare_repo: Path
 ) -> None:
     """Session with both a github_repository and a file resource provisions both."""
     payload = {
@@ -135,10 +132,10 @@ def test_mvp_01b_mixed_resources_provisioned(
 # ---------------------------------------------------------------------------
 
 def test_mvp_02_send_user_message_starts_agent(
-    client: TestClient, fake_provider: FakeProvider, session_payload: dict
+    client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
     """POST /v1/sessions/{id}/events with user.message returns 200/202."""
-    fake_provider.script([ProviderResponse(text="done", stop_reason="end_turn")])
+    fake_launcher.script([[{"type": "session.status_idle", "stop_reason": "end_turn"}]])
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
 
     r = client.post(
@@ -149,7 +146,7 @@ def test_mvp_02_send_user_message_starts_agent(
 
 
 def test_mvp_02_send_event_to_unknown_session_returns_404(
-    client: TestClient, fake_provider: FakeProvider
+    client: TestClient, fake_launcher
 ) -> None:
     """Sending an event to a non-existent session must return 404."""
     r = client.post(
@@ -161,15 +158,14 @@ def test_mvp_02_send_event_to_unknown_session_returns_404(
 
 # ---------------------------------------------------------------------------
 # AC-2b: POST /v1/sessions/{id}/events is non-blocking
-# Covers FR-6 (background agent loop)
+# Covers FR-6 (background agent launch)
 # ---------------------------------------------------------------------------
 
 def test_mvp_02b_send_event_is_non_blocking(
-    client: TestClient, fake_provider: FakeProvider, session_payload: dict
+    client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
-    """The events endpoint returns immediately; the agent loop runs in the background."""
-    # Script a provider response that takes no real time (it is fake).
-    fake_provider.script([ProviderResponse(text="done", stop_reason="end_turn")])
+    """The events endpoint returns immediately; the agent runs in the background."""
+    fake_launcher.script([[{"type": "session.status_idle", "stop_reason": "end_turn"}]])
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
 
     start = time.monotonic()
@@ -179,67 +175,23 @@ def test_mvp_02b_send_event_is_non_blocking(
     )
     elapsed = time.monotonic() - start
     assert r.status_code in (200, 202)
-    # The endpoint must return in well under 5 seconds — if the agent loop were
-    # blocking, a slow provider would stall the response.
+    # The endpoint must return in well under 5 seconds — if the agent launch were
+    # blocking, a slow launcher would stall the response.
     assert elapsed < 5.0, f"events endpoint took {elapsed:.2f}s — must be non-blocking"
 
 
 # ---------------------------------------------------------------------------
-# AC-3: GET /v1/sessions/{id}/stream emits agent events via SSE
-# Covers FR-5, FR-6
-# ---------------------------------------------------------------------------
-
-def test_mvp_03_stream_emits_agent_events(
-    client: TestClient, fake_provider: FakeProvider, session_payload: dict
-) -> None:
-    """SSE stream must emit at least one agent.tool_use event when Claude uses a tool."""
-    fake_provider.script([
-        ProviderResponse(
-            tool_uses=[ToolUse(id="t1", name="bash", input={"command": "ls /workspace/repo"})],
-            stop_reason="tool_use",
-        ),
-        ProviderResponse(text="all good", stop_reason="end_turn"),
-    ])
-    session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
-    client.post(
-        f"/v1/sessions/{session_id}/events",
-        json={"events": [{"type": "user.message", "content": "explore"}]},
-    )
-
-    with client.stream("GET", f"/v1/sessions/{session_id}/stream") as r:
-        assert r.status_code == 200
-        assert "text/event-stream" in r.headers.get("content-type", "")
-        collected: list[dict] = []
-        for line in r.iter_lines():
-            if line.startswith("data:"):
-                payload_str = line[len("data:"):].strip()
-                try:
-                    collected.append(json.loads(payload_str))
-                except json.JSONDecodeError:
-                    pass
-            # Stop reading once the session finishes
-            if any(e.get("type") == "session.status_idle" for e in collected):
-                break
-
-    event_types = {e["type"] for e in collected}
-    assert "agent.tool_use" in event_types, (
-        f"expected agent.tool_use in SSE stream, got: {event_types}"
-    )
-    assert "agent.tool_result" in event_types, (
-        f"expected agent.tool_result in SSE stream, got: {event_types}"
-    )
-
-
-# ---------------------------------------------------------------------------
 # AC-3b: SSE stream emits session.status_running and session.status_idle
+# (AC-3 / test_mvp_03_stream_emits_agent_events is REMOVED: agent.tool_use
+#  events no longer exist in the infrastructure-only model.)
 # Covers FR-5, FR-6
 # ---------------------------------------------------------------------------
 
 def test_mvp_03b_stream_emits_lifecycle_events(
-    client: TestClient, fake_provider: FakeProvider, session_payload: dict
+    client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
-    """Stream must emit session.status_running when loop starts and session.status_idle when done."""
-    fake_provider.script([ProviderResponse(text="finished", stop_reason="end_turn")])
+    """Stream must emit session.status_running when launch starts and session.status_idle when done."""
+    fake_launcher.script([[{"type": "session.status_idle", "stop_reason": "end_turn"}]])
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
     client.post(
         f"/v1/sessions/{session_id}/events",
@@ -248,6 +200,7 @@ def test_mvp_03b_stream_emits_lifecycle_events(
 
     with client.stream("GET", f"/v1/sessions/{session_id}/stream") as r:
         assert r.status_code == 200
+        assert "text/event-stream" in r.headers.get("content-type", "")
         collected: list[dict] = []
         for line in r.iter_lines():
             if line.startswith("data:"):
@@ -283,10 +236,10 @@ def test_mvp_03b_stream_unknown_session_returns_404(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 def test_mvp_04_get_session_returns_final_state(
-    client: TestClient, fake_provider: FakeProvider, session_payload: dict
+    client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
     """GET /v1/sessions/{id} must return status and event list after agent finishes."""
-    fake_provider.script([ProviderResponse(text="done", stop_reason="end_turn")])
+    fake_launcher.script([[{"type": "session.status_idle", "stop_reason": "end_turn"}]])
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
     client.post(
         f"/v1/sessions/{session_id}/events",
@@ -302,10 +255,10 @@ def test_mvp_04_get_session_returns_final_state(
 
 
 def test_mvp_04_get_session_events_include_user_message(
-    client: TestClient, fake_provider: FakeProvider, session_payload: dict
+    client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
     """The event list must include the user.message event that was sent."""
-    fake_provider.script([ProviderResponse(text="done", stop_reason="end_turn")])
+    fake_launcher.script([[{"type": "session.status_idle", "stop_reason": "end_turn"}]])
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
     client.post(
         f"/v1/sessions/{session_id}/events",
@@ -344,10 +297,10 @@ def test_mvp_04b_jsonl_log_is_created_on_session_start(
 
 
 def test_mvp_04b_jsonl_log_records_agent_events(
-    client: TestClient, fake_provider: FakeProvider, session_payload: dict
+    client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
-    """After the agent loop, the JSONL log must contain session.created and user.message entries."""
-    fake_provider.script([ProviderResponse(text="logged", stop_reason="end_turn")])
+    """After the agent finishes, the JSONL log must contain session.created and user.message."""
+    fake_launcher.script([[{"type": "session.status_idle", "stop_reason": "end_turn"}]])
     r = client.post("/v1/sessions", json=session_payload)
     session_id = r.json()["session_id"]
     client.post(
@@ -417,12 +370,12 @@ def test_mvp_05_list_sessions_includes_created_session(
 # ---------------------------------------------------------------------------
 
 def test_mvp_06_resume_session_with_new_message(
-    client: TestClient, fake_provider: FakeProvider, session_payload: dict
+    client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
     """A second user.message to the same session must be accepted and processed."""
-    fake_provider.script([
-        ProviderResponse(text="first turn done", stop_reason="end_turn"),
-        ProviderResponse(text="second turn done", stop_reason="end_turn"),
+    fake_launcher.script([
+        [{"type": "session.status_idle", "stop_reason": "end_turn"}],
+        [{"type": "session.status_idle", "stop_reason": "end_turn"}],
     ])
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
 
@@ -444,12 +397,12 @@ def test_mvp_06_resume_session_with_new_message(
 # ---------------------------------------------------------------------------
 
 def test_mvp_06b_resumed_session_log_contains_both_turns(
-    client: TestClient, fake_provider: FakeProvider, session_payload: dict
+    client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
     """The JSONL log must record user.message events from both turns after a resume."""
-    fake_provider.script([
-        ProviderResponse(text="turn one", stop_reason="end_turn"),
-        ProviderResponse(text="turn two", stop_reason="end_turn"),
+    fake_launcher.script([
+        [{"type": "session.status_idle", "stop_reason": "end_turn"}],
+        [{"type": "session.status_idle", "stop_reason": "end_turn"}],
     ])
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
 
@@ -508,7 +461,6 @@ def test_mvp_07_get_after_delete_returns_404_or_deleted_status(
     client.delete(f"/v1/sessions/{session_id}")
 
     r = client.get(f"/v1/sessions/{session_id}")
-    # Either the session is gone (404) or it clearly shows deleted state
     if r.status_code == 200:
         assert r.json().get("status") in ("deleted", "closed"), (
             "After DELETE, GET must return 404 or status=deleted/closed"

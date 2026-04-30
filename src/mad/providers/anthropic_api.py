@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from mad.providers.base import LLMProvider, ProviderResponse
 
+class AnthropicAPIProvider:
+    """Stub — not implemented in MVP."""
 
-class AnthropicAPIProvider(LLMProvider):
-    async def complete(self, system: str, messages: list[dict], tools: list[dict]) -> ProviderResponse:
+    async def run(self, prompt, workspace, emit):
         raise NotImplementedError("AnthropicAPIProvider not implemented in MVP")

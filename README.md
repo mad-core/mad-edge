@@ -10,7 +10,7 @@ Mad About orchestrates a team of AI agents that collaborate to design, implement
 
 ## Status
 
-Early days. The first milestone is **Mad** — a self-hosted API that provisions workspaces, clones repos, and runs Claude agents autonomously against them. See [`specs/v0.1/`](specs/v0.1/README.md) for the full spec-driven package.
+Early days. The first milestone is **Mad** — a self-hosted API that provisions workspaces, clones repos, and runs Claude agents autonomously against them. See [`specs/infra/`](specs/infra/README.md) for the full spec-driven package.
 
 ## Install
 
@@ -38,7 +38,7 @@ mad/
 │   ├── agent/              # harness loop + tool execution
 │   ├── providers/          # LLMProvider protocol + claude_cli / anthropic_api / fake
 │   └── cli.py              # `mad` console entry-point
-├── specs/v0.1/             # spec-driven package for the current milestone
+├── specs/infra/             # spec-driven package for the current milestone
 └── tests/                  # pytest acceptance + security tests
 ```
 
@@ -46,7 +46,7 @@ Hard rules and conventions that govern every change live in [`CLAUDE.md`](CLAUDE
 
 ## Documentation
 
-- [`specs/v0.1/`](specs/v0.1/README.md) — spec-driven development package for v0.1 (requirements, design, API contract, implementation plan).
+- [`specs/infra/`](specs/infra/README.md) — spec-driven development package for v0.1 (requirements, design, API contract, implementation plan).
 - [`docs/backlog.md`](docs/backlog.md) — known improvements deferred past v0.1.
 - [`docs/sandbox-bwrap.md`](docs/sandbox-bwrap.md) — hardening guide for the execution sandbox using bubblewrap.
 

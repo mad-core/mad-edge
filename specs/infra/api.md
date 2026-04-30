@@ -1,4 +1,4 @@
-# API Contract — Mad v0.1
+# API Contract — Mad infra
 
 Base path: `/v1`.
 Content type: `application/json` unless otherwise noted.
@@ -8,7 +8,7 @@ Content type: `application/json` unless otherwise noted.
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/v1/sessions` | Create a session (clone repos, provision workspace). Accepts optional `Idempotency-Key` header. |
-| `POST` | `/v1/sessions/{id}/events` | Send events (e.g. `user.message`) to a session. |
+| `POST` | `/v1/sessions/{id}/events` | Send events (e.g. `user.message`) to a session. The first message launches the external agent. |
 | `GET` | `/v1/sessions/{id}/stream` | Subscribe to the SSE event stream for a session. |
 | `GET` | `/v1/sessions/{id}` | Current state of a session. |
 | `GET` | `/v1/sessions` | List sessions. |
@@ -28,7 +28,6 @@ Creates a new session, provisions its workspace, and clones the requested resour
 {
   "agent": {
     "name": "issue-solver",
-    "model": "claude-sonnet-4-6",
     "system": "You are an autonomous developer agent. You receive tasks and implement solutions...",
     "provider": "claude_cli"
   },
@@ -62,9 +61,8 @@ Creates a new session, provisions its workspace, and clones the requested resour
 
 **`agent`**
 - `name` — free-form label for the agent role.
-- `model` — Claude model id (e.g. `claude-sonnet-4-6`). Optional when using `claude_cli` (the CLI picks its own).
-- `system` — system prompt for the agent.
-- `provider` — one of `claude_cli` | `anthropic_api`.
+- `system` — system prompt passed to the agent launcher. How it is used depends on the launcher implementation.
+- `provider` — selects the agent launcher. Currently: `claude_cli`.
 
 **`resources[]`**
 Each resource is one of:
@@ -100,7 +98,7 @@ Each resource is one of:
 
 ## `POST /v1/sessions/{id}/events`
 
-Send one or more events to a running session. The first `user.message` event starts the agent loop.
+Send one or more events to a session. The first `user.message` launches the external agent in the session workspace with the message content as the prompt.
 
 ```json
 {
@@ -126,15 +124,15 @@ Example frames:
 
 ```
 data: {"type": "session.status_running", "timestamp": "..."}
-data: {"type": "agent.message", "content": "Voy a explorar el repo...", "turn": 1}
-data: {"type": "agent.tool_use", "tool": "bash", "input": "find /workspace/repo -name '*.py'"}
-data: {"type": "agent.tool_result", "tool": "bash", "result": "src/auth.py\nsrc/utils.py"}
-data: {"type": "session.status_idle", "stop_reason": "completed"}
+data: {"type": "agent.output", "line": "Explorando el repositorio..."}
+data: {"type": "agent.output", "line": "Encontré el bug en src/auth.py línea 42"}
+data: {"type": "agent.output", "line": "Aplicando el fix y creando PR..."}
+data: {"type": "session.status_idle", "stop_reason": "end_turn", "timestamp": "..."}
 ```
 
 ## `GET /v1/sessions/{id}`
 
-Returns the current state of a session plus the full event log (or a summary, depending on query params — to be detailed during implementation).
+Returns the current state of a session plus the full event log.
 
 ## `GET /v1/sessions`
 
@@ -148,7 +146,7 @@ Closes the session and removes its temporary workspace directory. The JSONL sess
 
 ```bash
 # 1. Start the server
-uvicorn app:app --host 0.0.0.0 --port 8000
+mad serve
 
 # 2. Create a session
 curl -X POST http://localhost:8000/v1/sessions \
@@ -173,7 +171,7 @@ curl -X POST http://localhost:8000/v1/sessions \
 # Response:
 # {"session_id": "sesn_abc123", "status": "created", "resources_mounted": [...]}
 
-# 3. Kick off the agent
+# 3. Launch the agent with a prompt
 curl -X POST http://localhost:8000/v1/sessions/sesn_abc123/events \
   -H "Content-Type: application/json" \
   -d '{
@@ -183,6 +181,6 @@ curl -X POST http://localhost:8000/v1/sessions/sesn_abc123/events \
     }]
   }'
 
-# 4. Listen to the event stream
+# 4. Watch the agent work in real time
 curl -N http://localhost:8000/v1/sessions/sesn_abc123/stream
 ```
