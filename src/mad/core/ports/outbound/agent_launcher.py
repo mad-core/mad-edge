@@ -1,7 +1,7 @@
 """Outbound port: AgentLauncher.
 
 Authoritative definition of the interface for launching external agents.
-mad.providers.base re-exports this for backwards compatibility (deprecated alias).
+Implementations live in mad.adapters.outbound.agents.
 """
 from __future__ import annotations
 

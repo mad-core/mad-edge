@@ -1,18 +1,18 @@
 """SessionStore — in-memory index of live sessions.
 
-This class is now a thin wrapper providing:
+This class is a thin container providing:
   - sessions: dict[str, Session] — the live session index
   - idempotency: dict[str, str] — key -> session_id map
   - sse_queues: dict[str, asyncio.Queue] — SSE streams
 
 Use cases receive these dicts directly as constructor arguments so they
-can be tested without a SessionStore instance.
+can be tested without a SessionStore instance. All persistence is handled
+by the SessionRepository port — SessionStore has no I/O.
 """
 from __future__ import annotations
 
 import asyncio
 
-from mad.core import log
 from mad.core.domain.entities.session import Session
 
 
@@ -35,8 +35,3 @@ class SessionStore:
         q = self.sse_queues.get(session_id)
         if q is not None:
             q.put_nowait(event)
-
-    def emit_and_push(self, session_id: str, event_type: str, data: dict | None = None) -> dict:
-        event = log.emit(session_id, event_type, data)
-        self.push_event(session_id, event)
-        return event

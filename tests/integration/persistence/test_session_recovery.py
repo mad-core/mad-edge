@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from mad.api.app import create_app
+from mad.adapters.inbound.http import create_app
 from mad.core.sessions import SessionStore
 
 

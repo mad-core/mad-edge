@@ -1,54 +1,15 @@
 from __future__ import annotations
 
 import subprocess
-from collections import deque
 from pathlib import Path
-from typing import Callable, Awaitable
 
 import pytest
 from fastapi.testclient import TestClient
 
-import mad.core.log as _core_log
 import mad.adapters.outbound.persistence.jsonl_session_repository as _adapter_log
 from mad.adapters.inbound.http import create_app
 from mad.adapters.outbound.agents import factory
-
-
-# ---------------------------------------------------------------------------
-# FakeLauncher — test double for the new AgentLauncher protocol
-# ---------------------------------------------------------------------------
-
-class FakeLauncher:
-    """Test double for AgentLauncher.
-
-    Script a sequence of runs via .script(runs). Each element of `runs` is a
-    list of event dicts that will be emitted (in order) for one call to run().
-
-    If the scripted queue is exhausted, a default session.status_idle event is
-    emitted so tests that don't care about the response still terminate cleanly.
-    """
-
-    def __init__(self) -> None:
-        self._queue: deque[list[dict]] = deque()
-
-    def script(self, runs: list[list[dict]]) -> None:
-        """Pre-load the sequence of event-lists for upcoming run() calls."""
-        self._queue = deque(runs)
-
-    async def run(
-        self,
-        prompt: str,
-        workspace: Path,
-        emit: Callable[[str, dict], Awaitable[None]],
-    ) -> None:
-        """Emit the next scripted run's events, or a default idle event."""
-        if self._queue:
-            events = self._queue.popleft()
-        else:
-            events = [{"type": "session.status_idle", "stop_reason": "end_turn"}]
-
-        for event in events:
-            await emit(event["type"], event)
+from mad.adapters.outbound.agents.fake import FakeLauncher
 
 
 # ---------------------------------------------------------------------------
@@ -128,14 +89,10 @@ def session_payload(bare_repo: Path) -> dict:
 def tmp_sessions_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Monkeypatch SESSIONS_DIR to a tmp_path subdirectory.
 
-    Patches both the adapter module (canonical location) and the legacy
-    mad.core.log shim so that all code paths write to the same tmp directory.
-
-    Tests that check JSONL persistence should use this fixture so they don't
-    depend on (or pollute) the CWD-relative 'sessions/' directory.
+    Patches the adapter module (canonical location) so all persistence code
+    writes to the tmp directory instead of the CWD-relative 'sessions/' dir.
     """
     sessions = tmp_path / "sessions"
     sessions.mkdir()
     monkeypatch.setattr(_adapter_log, "SESSIONS_DIR", sessions)
-    monkeypatch.setattr(_core_log, "SESSIONS_DIR", sessions)
     return sessions

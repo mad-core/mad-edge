@@ -3,14 +3,13 @@
 Enforces CLAUDE.md hard rule 4 (package layout) dynamically.
 
 Tests:
-1. ``test_core_has_no_fastapi_imports`` — all of mad.core must not import fastapi,
-   mad.api, mad.providers, subprocess, or shutil.
-   Note: legacy shim files (core/resources.py, core/workspace.py) may import
-   from mad.adapters while they are being deprecated (scheduled removal in Phase 6).
-2. ``test_ports_have_no_forbidden_imports`` — stricter check on mad.core.ports:
-   must not import fastapi, mad.api, mad.providers.claude_cli, mad.adapters,
+1. ``test_core_has_no_fastapi_imports`` — all of mad.core must not import fastapi.
+2. ``test_core_has_no_infra_imports`` — all of mad.core must not import
+   fastapi, mad.api, mad.providers, mad.adapters, subprocess, shutil, httpx, boto3.
+3. ``test_ports_have_no_forbidden_imports`` — stricter check on mad.core.ports:
+   must not import fastapi, mad.api, mad.providers, mad.adapters,
    subprocess, boto3, or httpx.
-3. ``test_domain_and_use_cases_have_no_forbidden_imports`` — Phase 4/5: same strict
+4. ``test_domain_and_use_cases_have_no_forbidden_imports`` — same strict
    check for mad.core.domain and mad.core.use_cases.
 """
 from __future__ import annotations
@@ -27,12 +26,12 @@ DOMAIN_DIR = CORE_DIR / "domain"
 USE_CASES_DIR = CORE_DIR / "use_cases"
 
 # Forbidden module prefixes for the broad core check.
-# mad.adapters is excluded here because deprecated shims at core root level
-# (core/resources.py, core/workspace.py) still re-export from adapters until Phase 6.
+# Phase 6: mad.adapters is now forbidden everywhere in core (shims have been deleted).
 _CORE_FORBIDDEN_PREFIXES = (
     "fastapi",
     "mad.api",
     "mad.providers",
+    "mad.adapters",
     "subprocess",
     "shutil",
     "httpx",
@@ -103,9 +102,8 @@ def test_core_has_no_fastapi_imports():
 def test_core_has_no_infra_imports():
     """All .py files under src/mad/core/ must not import infrastructure concerns.
 
-    Forbidden: fastapi, mad.api, mad.providers, subprocess, shutil, httpx, boto3.
-    Note: mad.adapters imports are allowed in deprecated shims at the core root level
-    (core/resources.py, core/workspace.py) until Phase 6 removes them.
+    Forbidden: fastapi, mad.api, mad.providers, mad.adapters, subprocess, shutil, httpx, boto3.
+    Phase 6 complete: all deprecated shims removed, mad.adapters is now fully forbidden.
     """
     all_violations: list[str] = []
     for py_file in sorted(CORE_DIR.rglob("*.py")):

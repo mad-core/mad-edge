@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from mad.core.exceptions import PathTraversalError
+from mad.core.domain.exceptions.base import PathTraversalError
 from mad.core.security import validate_mount_path
 
 
