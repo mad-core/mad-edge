@@ -1,4 +1,5 @@
 ---
+name: work
 description: Full issue execution pipeline. Reads a GitHub issue, creates a correctly-named branch, works the issue, and opens a PR. References /commit for commits.
 argument-hint: <issue-number>
 ---

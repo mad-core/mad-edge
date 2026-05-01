@@ -1,6 +1,7 @@
 ---
+name: intake
 description: Full issue intake pipeline. Classifies, searches for duplicates/blockers, fills the right template, and creates the GitHub issue. Always uses AskUserQuestion — never plain text for decisions.
-argument-hint: [optional one-line description of the issue]
+argument-hint: <description>
 ---
 
 # intake
