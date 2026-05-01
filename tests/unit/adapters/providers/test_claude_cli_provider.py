@@ -10,22 +10,22 @@ AC → test mapping:
 These tests are EXPECTED to fail (red) until ClaudeCLIProvider is implemented.
 Tests use fake binary scripts in tmp_path — no real `claude` binary is invoked.
 """
+
 from __future__ import annotations
 
 import stat
 import textwrap
 import time
 from pathlib import Path
-from typing import Callable, Awaitable
 
 import pytest
 
 from mad.adapters.outbound.agents.claude_cli import ClaudeCLIProvider
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_executable_script(path: Path, source: str) -> Path:
     """Write a Python shebang script, make it executable, and return its path."""
@@ -53,6 +53,7 @@ async def _collect_emit(
 # AC-1: stdout lines → 3 agent.output events with correct content
 # Covers FR-1, FR-2
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_claude_cli_ac1_stdout_lines_emitted_as_agent_output(
@@ -89,6 +90,7 @@ async def test_claude_cli_ac1_stdout_lines_emitted_as_agent_output(
 # Covers FR-3
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_claude_cli_ac2_exit_zero_emits_status_idle(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -120,6 +122,7 @@ async def test_claude_cli_ac2_exit_zero_emits_status_idle(
 # AC-3: exit 1 with token in stderr → session.error with token REDACTED
 # Covers FR-4, FR-8
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_claude_cli_ac3_nonzero_exit_emits_error_with_redacted_token(
@@ -158,6 +161,7 @@ async def test_claude_cli_ac3_nonzero_exit_emits_error_with_redacted_token(
 # Covers FR-6
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_claude_cli_ac4_timeout_kills_subprocess_and_emits_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -179,9 +183,7 @@ async def test_claude_cli_ac4_timeout_kills_subprocess_and_emits_error(
     events = await _collect_emit(launcher, prompt="test", workspace=tmp_path)
     elapsed = time.monotonic() - start
 
-    assert elapsed < 4.0, (
-        f"Timeout should fire within ~2s of the 1s limit; took {elapsed:.2f}s"
-    )
+    assert elapsed < 4.0, f"Timeout should fire within ~2s of the 1s limit; took {elapsed:.2f}s"
 
     error_events = [e for e in events if e.get("type") == "session.error"]
     assert len(error_events) >= 1, (
@@ -195,6 +197,7 @@ async def test_claude_cli_ac4_timeout_kills_subprocess_and_emits_error(
 # AC-5: MAD_CLAUDE_CLI_BIN custom path is invoked (not $PATH claude)
 # Covers FR-5
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_claude_cli_ac5_custom_bin_path_is_invoked(

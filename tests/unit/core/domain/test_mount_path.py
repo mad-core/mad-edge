@@ -3,12 +3,13 @@
 Validates path traversal prevention logic (CLAUDE.md hard rule 3).
 No HTTP, no filesystem — pure domain logic.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from mad.core.domain.value_objects.mount_path import MountPath
 from mad.core.domain.exceptions.base import PathTraversalError
+from mad.core.domain.value_objects.mount_path import MountPath
 
 
 def test_valid_workspace_path_accepted():

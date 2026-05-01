@@ -4,9 +4,9 @@ FR-3  — Path traversal: mount_path values that escape the session workspace MU
 FR-2  — Token hygiene: after clone, git remote -v must NOT contain the authorization_token.
 NFR-2 — Token hygiene is also a non-functional constraint (tokens never persisted).
 """
+
 from __future__ import annotations
 
-import json
 import subprocess
 import time
 from pathlib import Path
@@ -14,15 +14,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-
 # ---------------------------------------------------------------------------
 # FR-3 — Path traversal prevention
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.smoke
-def test_path_traversal_absolute_escape_is_rejected(
-    client: TestClient, bare_repo: Path
-) -> None:
+def test_path_traversal_absolute_escape_is_rejected(client: TestClient, bare_repo: Path) -> None:
     """A mount_path that is an absolute path outside /workspace must be rejected with 400."""
     payload = {
         "agent": {"name": "a", "system": "", "provider": "fake_scripted"},
@@ -42,9 +40,7 @@ def test_path_traversal_absolute_escape_is_rejected(
 
 
 @pytest.mark.smoke
-def test_path_traversal_dotdot_is_rejected(
-    client: TestClient, bare_repo: Path
-) -> None:
+def test_path_traversal_dotdot_is_rejected(client: TestClient, bare_repo: Path) -> None:
     """A mount_path using ../ to escape the workspace must be rejected with 400."""
     payload = {
         "agent": {"name": "a", "system": "", "provider": "fake_scripted"},
@@ -64,9 +60,7 @@ def test_path_traversal_dotdot_is_rejected(
 
 
 @pytest.mark.smoke
-def test_path_traversal_symlink_escape_is_rejected(
-    client: TestClient, bare_repo: Path
-) -> None:
+def test_path_traversal_symlink_escape_is_rejected(client: TestClient, bare_repo: Path) -> None:
     """A mount_path of just /tmp (outside /workspace prefix) must be rejected with 400."""
     payload = {
         "agent": {"name": "a", "system": "", "provider": "fake_scripted"},
@@ -126,9 +120,7 @@ def test_path_traversal_valid_workspace_path_is_accepted(
     )
 
 
-def test_path_traversal_root_is_rejected(
-    client: TestClient, bare_repo: Path
-) -> None:
+def test_path_traversal_root_is_rejected(client: TestClient, bare_repo: Path) -> None:
     """A mount_path of '/' must be rejected with 400 (Hard rule 3)."""
     payload = {
         "agent": {"name": "a", "system": "", "provider": "fake_scripted"},
@@ -142,19 +134,16 @@ def test_path_traversal_root_is_rejected(
         ],
     }
     r = client.post("/v1/sessions", json=payload)
-    assert r.status_code == 400, (
-        f"mount_path='/' must be rejected with 400, got {r.status_code}"
-    )
+    assert r.status_code == 400, f"mount_path='/' must be rejected with 400, got {r.status_code}"
 
 
 # ---------------------------------------------------------------------------
 # FR-2 / NFR-2 — Token hygiene
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.smoke
-def test_token_stripped_from_remote_after_clone(
-    client: TestClient, bare_repo: Path
-) -> None:
+def test_token_stripped_from_remote_after_clone(client: TestClient, bare_repo: Path) -> None:
     """After cloning, git remote -v must not contain the authorization_token."""
     token = "ghp_supersecret_TOKEN_12345"
     payload = {
@@ -182,9 +171,7 @@ def test_token_stripped_from_remote_after_clone(
 
 
 @pytest.mark.smoke
-def test_token_not_in_session_response(
-    client: TestClient, bare_repo: Path
-) -> None:
+def test_token_not_in_session_response(client: TestClient, bare_repo: Path) -> None:
     """The POST /v1/sessions response body must not echo the authorization_token."""
     token = "ghp_response_leak_TEST_99999"
     payload = {
@@ -213,12 +200,14 @@ def test_token_not_in_stderr_of_launcher(
     """
     token = "ghp_FAKE_LAUNCHER_TOKEN_secretXYZ"
     # Script the FakeLauncher to emit the token in an agent.output line
-    fake_launcher.script([
+    fake_launcher.script(
         [
-            {"type": "agent.output", "line": f"Some output containing {token}"},
-            {"type": "session.status_idle", "stop_reason": "end_turn"},
+            [
+                {"type": "agent.output", "line": f"Some output containing {token}"},
+                {"type": "session.status_idle", "stop_reason": "end_turn"},
+            ]
         ]
-    ])
+    )
     payload = {
         "agent": {"name": "a", "system": "", "provider": "fake_scripted"},
         "resources": [

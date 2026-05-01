@@ -1,4 +1,5 @@
 """Unit tests for validate_mount_path — pure domain, no FastAPI."""
+
 from __future__ import annotations
 
 import pytest

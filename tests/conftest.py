@@ -11,10 +11,10 @@ from mad.adapters.inbound.http import create_app
 from mad.adapters.outbound.agents import factory
 from mad.adapters.outbound.agents.fake import FakeLauncher
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def fake_launcher(monkeypatch: pytest.MonkeyPatch) -> FakeLauncher:
@@ -52,8 +52,19 @@ def bare_repo(tmp_path: Path) -> Path:
     (seed / "README.md").write_text("seed repo\n")
     subprocess.run(["git", "-C", str(seed), "add", "README.md"], check=True)
     subprocess.run(
-        ["git", "-C", str(seed), "-c", "user.email=t@t", "-c", "user.name=t",
-         "commit", "-q", "-m", "init"],
+        [
+            "git",
+            "-C",
+            str(seed),
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-q",
+            "-m",
+            "init",
+        ],
         check=True,
     )
     bare = tmp_path / "origin.git"

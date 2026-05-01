@@ -3,6 +3,7 @@
 NFR-2 / Hard rule 2 — Token hygiene: authorization tokens must never appear
 in the persisted JSONL session log.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,6 +35,4 @@ def test_token_not_in_session_log(
     log_path = tmp_sessions_dir / f"{session_id}.jsonl"
     assert log_path.exists(), "session log must exist"
     log_contents = log_path.read_text()
-    assert token not in log_contents, (
-        "authorization_token must NOT appear in the session log JSONL"
-    )
+    assert token not in log_contents, "authorization_token must NOT appear in the session log JSONL"

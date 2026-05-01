@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +25,7 @@ def emit(session_id: str, event_type: str, data: dict[str, Any] | None = None) -
 
     The log is the source of truth (CLAUDE.md hard rule 6).
     """
-    event = {"type": event_type, "timestamp": datetime.now(timezone.utc).isoformat()}
+    event = {"type": event_type, "timestamp": datetime.now(UTC).isoformat()}
     if data:
         event.update(data)
     line = json.dumps(event)

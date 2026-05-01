@@ -5,6 +5,7 @@ supply explicit overrides (the common production path). Tests pass their
 own fakes via the ``create_app`` keyword arguments and never go through
 this function.
 """
+
 from __future__ import annotations
 
 from mad.adapters.outbound.persistence.jsonl_session_repository import JsonlSessionRepository

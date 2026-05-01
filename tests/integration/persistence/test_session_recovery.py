@@ -3,9 +3,9 @@
 After a process restart, a new SessionStore + create_app() must be able to
 serve GET /v1/sessions/{id} by reading the JSONL log, not from in-memory state.
 """
+
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 from mad.adapters.inbound.http import create_app

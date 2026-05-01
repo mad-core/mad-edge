@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 
 class FakeLauncher:

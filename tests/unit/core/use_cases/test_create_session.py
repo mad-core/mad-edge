@@ -2,10 +2,10 @@
 
 Uses fake port implementations — no HTTP, no filesystem, no real git.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -17,10 +17,10 @@ from mad.core.use_cases.sessions.create_session import (
     ResourceSpec,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fake ports
 # ---------------------------------------------------------------------------
+
 
 class FakeSessionRepository:
     def __init__(self):
@@ -55,7 +55,9 @@ class FakeProvisioner:
     def destroy(self, session_id: str) -> None:
         self.destroyed.append(session_id)
 
-    def materialize_github_repo(self, workspace: Path, mount_path: str, repo_url: str, token: str | None) -> None:
+    def materialize_github_repo(
+        self, workspace: Path, mount_path: str, repo_url: str, token: str | None
+    ) -> None:
         self.repos_cloned.append((mount_path, repo_url))
 
     def materialize_file(self, workspace: Path, mount_path: str, content: str) -> None:
@@ -65,6 +67,7 @@ class FakeProvisioner:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def repo():
@@ -80,12 +83,16 @@ def provisioner(tmp_path):
 def use_case(repo, provisioner):
     sessions: dict[str, Session] = {}
     idempotency: dict[str, str] = {}
-    return CreateSessionUseCase(
-        repo=repo,
-        provisioner=provisioner,
-        sessions_index=sessions,
-        idempotency_index=idempotency,
-    ), sessions, idempotency
+    return (
+        CreateSessionUseCase(
+            repo=repo,
+            provisioner=provisioner,
+            sessions_index=sessions,
+            idempotency_index=idempotency,
+        ),
+        sessions,
+        idempotency,
+    )
 
 
 def test_create_session_happy_path(use_case):
@@ -149,12 +156,14 @@ def test_github_repo_resource_is_materialized(use_case, provisioner):
     uc, _, _ = use_case
     payload = CreateSessionInput(
         agent={"name": "a", "provider": "fake"},
-        resources=[ResourceSpec(
-            type="github_repository",
-            mount_path="/workspace/repo",
-            url="https://github.com/test/repo",
-            authorization_token="ghp_test",
-        )],
+        resources=[
+            ResourceSpec(
+                type="github_repository",
+                mount_path="/workspace/repo",
+                url="https://github.com/test/repo",
+                authorization_token="ghp_test",
+            )
+        ],
     )
     uc.execute(payload)
     assert len(provisioner.repos_cloned) == 1
@@ -167,12 +176,14 @@ def test_tokens_stored_in_session_for_redaction(use_case):
     token = "ghp_mysecret"
     payload = CreateSessionInput(
         agent={"name": "a", "provider": "fake"},
-        resources=[ResourceSpec(
-            type="github_repository",
-            mount_path="/workspace/repo",
-            url="https://github.com/test/repo",
-            authorization_token=token,
-        )],
+        resources=[
+            ResourceSpec(
+                type="github_repository",
+                mount_path="/workspace/repo",
+                url="https://github.com/test/repo",
+                authorization_token=token,
+            )
+        ],
     )
     output = uc.execute(payload)
     assert token in output.session.tokens_to_redact

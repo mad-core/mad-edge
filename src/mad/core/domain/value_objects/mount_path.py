@@ -2,6 +2,7 @@
 
 Encapsulates path traversal validation (CLAUDE.md hard rule 3).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

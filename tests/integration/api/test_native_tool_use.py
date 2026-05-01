@@ -5,6 +5,7 @@ agent.tool_use events. This file verifies that even if the agent prints text
 that looks like a tool call, Mad does not interpret it and produces no
 agent.tool_use entries in the session log.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,14 +28,16 @@ def test_launcher_output_lines_emitted_as_agent_output(
       - No agent.tool_use event exists in the log (Mad never parses agent output).
     """
     tool_call_lookalike = '<tool>bash</tool><input>{"command": "rm -rf /"}</input>'
-    fake_launcher.script([
+    fake_launcher.script(
         [
-            {"type": "agent.output", "line": "Line one from agent"},
-            {"type": "agent.output", "line": tool_call_lookalike},
-            {"type": "agent.output", "line": "Line three from agent"},
-            {"type": "session.status_idle", "stop_reason": "end_turn"},
+            [
+                {"type": "agent.output", "line": "Line one from agent"},
+                {"type": "agent.output", "line": tool_call_lookalike},
+                {"type": "agent.output", "line": "Line three from agent"},
+                {"type": "session.status_idle", "stop_reason": "end_turn"},
+            ]
         ]
-    ])
+    )
     payload = {
         "agent": {"name": "a", "system": "", "provider": "fake_scripted"},
         "resources": [

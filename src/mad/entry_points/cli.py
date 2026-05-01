@@ -11,13 +11,13 @@ def main() -> None:
     if argv[0] == "serve":
         import uvicorn
 
-        host = "0.0.0.0"
+        host = "0.0.0.0"  # noqa: S104 — uvicorn launcher binds all interfaces by design
         port = 8000
         it = iter(argv[1:])
-        for token in it:
-            if token == "--host":
+        for arg in it:
+            if arg == "--host":
                 host = next(it)
-            elif token == "--port":
+            elif arg == "--port":
                 port = int(next(it))
         uvicorn.run("mad.adapters.inbound.http.app:create_app", host=host, port=port, factory=True)
         return

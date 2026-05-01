@@ -4,6 +4,7 @@ Formal contract for creating and managing isolated workspaces and mounting
 resources into them. Enforces CLAUDE.md hard rules 2 (token hygiene) and
 3 (path traversal prevention) at the adapter level.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -8,6 +8,7 @@ Each handler:
 
 Business logic lives in mad.core.use_cases.sessions.*.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,6 +16,7 @@ import json
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import StreamingResponse
 
+from mad.adapters.outbound.agents import factory
 from mad.core.sessions import SessionStore
 from mad.core.use_cases.sessions.create_session import (
     CreateSessionInput,
@@ -29,7 +31,6 @@ from mad.core.use_cases.sessions.send_user_message import (
     SendUserMessageUseCase,
 )
 from mad.core.use_cases.sessions.stream_session_events import StreamSessionEventsUseCase
-from mad.adapters.outbound.agents import factory
 
 router = APIRouter()
 

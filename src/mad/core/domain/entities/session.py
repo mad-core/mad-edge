@@ -4,6 +4,7 @@ The Session is the primary aggregate root for Mad. It tracks the lifecycle
 of a single agent invocation from creation through running, idle, error,
 or deletion.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

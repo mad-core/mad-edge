@@ -14,8 +14,8 @@
 ## Acceptance criteria
 
 - [ ] All existing tests pass without modification (or test changes are justified)
-- [ ] 
-- [ ] 
+- [ ]
+- [ ]
 
 ## Additional context
 

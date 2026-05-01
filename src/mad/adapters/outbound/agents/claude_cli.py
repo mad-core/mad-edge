@@ -5,8 +5,9 @@ import os
 import re
 import shutil
 import sys
+from collections.abc import Callable, Coroutine
 from pathlib import Path
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 
 class ClaudeCLIError(Exception):
@@ -17,8 +18,8 @@ class ClaudeCLIError(Exception):
 
 
 def _scrub(text: str) -> str:
-    text = re.sub(r'sk-ant-[A-Za-z0-9_-]+', '[REDACTED]', text)
-    text = re.sub(r'(?i)(token|key|secret|password)[=:\s]+\S+', r'\1=[REDACTED]', text)
+    text = re.sub(r"sk-ant-[A-Za-z0-9_-]+", "[REDACTED]", text)
+    text = re.sub(r"(?i)(token|key|secret|password)[=:\s]+\S+", r"\1=[REDACTED]", text)
     return text
 
 
@@ -50,7 +51,10 @@ class ClaudeCLIProvider:
     ) -> None:
         executable = os.environ.get("MAD_CLAUDE_CLI_BIN") or shutil.which("claude")
         if not executable:
-            await emit("session.error", {"type": "session.error", "error": "claude CLI binary not found"})
+            await emit(
+                "session.error",
+                {"type": "session.error", "error": "claude CLI binary not found"},
+            )
             return
 
         timeout = float(os.environ.get("MAD_CLAUDE_CLI_TIMEOUT_S", "600"))
@@ -58,7 +62,8 @@ class ClaudeCLIProvider:
         proc = await asyncio.create_subprocess_exec(
             executable,
             "--dangerously-skip-permissions",
-            "-p", prompt,
+            "-p",
+            prompt,
             cwd=str(workspace),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -71,10 +76,13 @@ class ClaudeCLIProvider:
                     line = line_bytes.decode(errors="replace").rstrip("\n")
                     await emit("agent.output", {"type": "agent.output", "line": line})
                 await proc.wait()
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
-            await emit("session.error", {"type": "session.error", "error": f"timed out after {timeout}s"})
+            await emit(
+                "session.error",
+                {"type": "session.error", "error": f"timed out after {timeout}s"},
+            )
             return
         except asyncio.CancelledError:
             proc.kill()
@@ -83,11 +91,21 @@ class ClaudeCLIProvider:
             raise
 
         if proc.returncode == 0:
-            await emit("session.status_idle", {"type": "session.status_idle", "stop_reason": "end_turn"})
+            await emit(
+                "session.status_idle",
+                {"type": "session.status_idle", "stop_reason": "end_turn"},
+            )
         else:
             stderr_raw = b""
             if proc.stderr:
                 stderr_raw = await proc.stderr.read()
             stderr_text = stderr_raw.decode(errors="replace")
             scrubbed = _scrub(stderr_text[-2000:])
-            await emit("session.error", {"type": "session.error", "error": scrubbed, "exit_code": proc.returncode})
+            await emit(
+                "session.error",
+                {
+                    "type": "session.error",
+                    "error": scrubbed,
+                    "exit_code": proc.returncode,
+                },
+            )

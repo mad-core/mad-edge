@@ -1,4 +1,5 @@
 """Unit tests for DeleteSessionUseCase."""
+
 from __future__ import annotations
 
 import pytest
@@ -51,6 +52,7 @@ def test_delete_session_happy_path():
 
 def test_delete_session_cleans_sse_queue():
     import asyncio
+
     sessions = {"sesn_del": _make_session()}
     provisioner = FakeProvisioner()
     q = asyncio.Queue()

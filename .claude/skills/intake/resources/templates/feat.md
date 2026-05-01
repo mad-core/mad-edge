@@ -8,9 +8,9 @@
 
 ## Acceptance criteria
 
-- [ ] 
-- [ ] 
-- [ ] 
+- [ ]
+- [ ]
+- [ ]
 
 ## Out of scope
 

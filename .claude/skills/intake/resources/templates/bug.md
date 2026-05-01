@@ -4,9 +4,9 @@
 
 ## Steps to reproduce
 
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 ## Current behavior
 
@@ -18,9 +18,9 @@
 
 ## Environment
 
-- Mad version / commit: 
-- Python version: 
-- OS: 
+- Mad version / commit:
+- Python version:
+- OS:
 
 ## Additional context
 

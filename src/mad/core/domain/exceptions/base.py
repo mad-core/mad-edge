@@ -2,6 +2,7 @@
 
 These are pure domain errors — no framework imports allowed.
 """
+
 from __future__ import annotations
 
 

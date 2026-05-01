@@ -16,8 +16,10 @@ Acceptance criterion → test mapping:
 
 These tests are EXPECTED to fail until the implementer runs (red TDD state).
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 from pathlib import Path
@@ -25,15 +27,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-
 # ---------------------------------------------------------------------------
 # AC-1: POST /v1/sessions with a GitHub repo → repo cloned in workspace
 # Covers FR-1, FR-2 (github_repository)
 # ---------------------------------------------------------------------------
 
-def test_mvp_01_create_session_clones_repo(
-    client: TestClient, session_payload: dict
-) -> None:
+
+def test_mvp_01_create_session_clones_repo(client: TestClient, session_payload: dict) -> None:
     """POST /v1/sessions returns session_id, status=created, and the repo is on disk."""
     r = client.post("/v1/sessions", json=session_payload)
     assert r.status_code == 200
@@ -56,9 +56,7 @@ def test_mvp_01_create_session_clones_repo(
     assert (local / "README.md").exists(), "seeded README must be present after clone"
 
 
-def test_mvp_01_create_session_response_shape(
-    client: TestClient, session_payload: dict
-) -> None:
+def test_mvp_01_create_session_response_shape(client: TestClient, session_payload: dict) -> None:
     """POST /v1/sessions response carries all fields described in api.md."""
     r = client.post("/v1/sessions", json=session_payload)
     assert r.status_code == 200
@@ -73,9 +71,8 @@ def test_mvp_01_create_session_response_shape(
 # Covers FR-2 (file type)
 # ---------------------------------------------------------------------------
 
-def test_mvp_01b_create_session_provisions_file_resource(
-    client: TestClient, fake_launcher
-) -> None:
+
+def test_mvp_01b_create_session_provisions_file_resource(client: TestClient, fake_launcher) -> None:
     """A resource of type=file must be written to the mapped mount_path."""
     payload = {
         "agent": {"name": "file-agent", "system": "test", "provider": "fake_scripted"},
@@ -132,6 +129,7 @@ def test_mvp_01b_mixed_resources_provisioned(
 # Covers FR-4
 # ---------------------------------------------------------------------------
 
+
 def test_mvp_02_send_user_message_starts_agent(
     client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
@@ -162,6 +160,7 @@ def test_mvp_02_send_event_to_unknown_session_returns_404(
 # Covers FR-6 (background agent launch)
 # ---------------------------------------------------------------------------
 
+
 def test_mvp_02b_send_event_is_non_blocking(
     client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
@@ -188,6 +187,7 @@ def test_mvp_02b_send_event_is_non_blocking(
 # Covers FR-5, FR-6
 # ---------------------------------------------------------------------------
 
+
 def test_mvp_03b_stream_emits_lifecycle_events(
     client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
@@ -205,11 +205,9 @@ def test_mvp_03b_stream_emits_lifecycle_events(
         collected: list[dict] = []
         for line in r.iter_lines():
             if line.startswith("data:"):
-                payload_str = line[len("data:"):].strip()
-                try:
+                payload_str = line[len("data:") :].strip()
+                with contextlib.suppress(json.JSONDecodeError):
                     collected.append(json.loads(payload_str))
-                except json.JSONDecodeError:
-                    pass
             if any(e.get("type") == "session.status_idle" for e in collected):
                 break
 
@@ -217,9 +215,7 @@ def test_mvp_03b_stream_emits_lifecycle_events(
     assert "session.status_running" in event_types, (
         f"expected session.status_running, got: {event_types}"
     )
-    assert "session.status_idle" in event_types, (
-        f"expected session.status_idle, got: {event_types}"
-    )
+    assert "session.status_idle" in event_types, f"expected session.status_idle, got: {event_types}"
     # The idle event must carry a stop_reason
     idle_events = [e for e in collected if e.get("type") == "session.status_idle"]
     assert idle_events[0].get("stop_reason") is not None
@@ -235,6 +231,7 @@ def test_mvp_03b_stream_unknown_session_returns_404(client: TestClient) -> None:
 # AC-4: GET /v1/sessions/{id} returns final state with every event recorded
 # Covers FR-8
 # ---------------------------------------------------------------------------
+
 
 def test_mvp_04_get_session_returns_final_state(
     client: TestClient, fake_launcher, session_payload: dict
@@ -285,6 +282,7 @@ def test_mvp_04_get_unknown_session_returns_404(client: TestClient) -> None:
 # AC-4b: JSONL session log records every event
 # Covers FR-7, NFR-3
 # ---------------------------------------------------------------------------
+
 
 def test_mvp_04b_jsonl_log_is_created_on_session_start(
     client: TestClient, session_payload: dict
@@ -337,9 +335,8 @@ def test_mvp_04b_jsonl_log_each_line_is_valid_json(
 # Covers FR-8
 # ---------------------------------------------------------------------------
 
-def test_mvp_05_list_sessions_returns_list(
-    client: TestClient, session_payload: dict
-) -> None:
+
+def test_mvp_05_list_sessions_returns_list(client: TestClient, session_payload: dict) -> None:
     """GET /v1/sessions must return a JSON array (or an object with a 'sessions' key)."""
     r = client.get("/v1/sessions")
     assert r.status_code == 200
@@ -359,10 +356,7 @@ def test_mvp_05_list_sessions_includes_created_session(
     body = r.json()
     sessions = body if isinstance(body, list) else body["sessions"]
 
-    ids = [
-        s["session_id"] if isinstance(s, dict) else s
-        for s in sessions
-    ]
+    ids = [s["session_id"] if isinstance(s, dict) else s for s in sessions]
     assert session_id in ids, f"session {session_id} not found in listing: {ids}"
 
 
@@ -371,14 +365,17 @@ def test_mvp_05_list_sessions_includes_created_session(
 # Covers FR-4, FR-6
 # ---------------------------------------------------------------------------
 
+
 def test_mvp_06_resume_session_with_new_message(
     client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
     """A second user.message to the same session must be accepted and processed."""
-    fake_launcher.script([
-        [{"type": "session.status_idle", "stop_reason": "end_turn"}],
-        [{"type": "session.status_idle", "stop_reason": "end_turn"}],
-    ])
+    fake_launcher.script(
+        [
+            [{"type": "session.status_idle", "stop_reason": "end_turn"}],
+            [{"type": "session.status_idle", "stop_reason": "end_turn"}],
+        ]
+    )
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
 
     r1 = client.post(
@@ -398,15 +395,18 @@ def test_mvp_06_resume_session_with_new_message(
 # Covers FR-7 (log is source of truth across turns)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.smoke
 def test_mvp_06b_resumed_session_log_contains_both_turns(
     client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
     """The JSONL log must record user.message events from both turns after a resume."""
-    fake_launcher.script([
-        [{"type": "session.status_idle", "stop_reason": "end_turn"}],
-        [{"type": "session.status_idle", "stop_reason": "end_turn"}],
-    ])
+    fake_launcher.script(
+        [
+            [{"type": "session.status_idle", "stop_reason": "end_turn"}],
+            [{"type": "session.status_idle", "stop_reason": "end_turn"}],
+        ]
+    )
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
 
     client.post(
@@ -430,6 +430,7 @@ def test_mvp_06b_resumed_session_log_contains_both_turns(
 # AC-7: DELETE /v1/sessions/{id} cleans workspace, preserves log
 # Covers FR-8
 # ---------------------------------------------------------------------------
+
 
 def test_mvp_07_delete_cleans_workspace_preserves_log(
     client: TestClient, session_payload: dict
@@ -477,6 +478,7 @@ def test_mvp_07_get_after_delete_returns_404_or_deleted_status(
 # Covers FR-9
 # ---------------------------------------------------------------------------
 
+
 def test_mvp_08_idempotency_key_returns_same_session(
     client: TestClient, session_payload: dict
 ) -> None:
@@ -491,9 +493,7 @@ def test_mvp_08_idempotency_key_returns_same_session(
     )
 
 
-def test_mvp_08_idempotency_key_does_not_reclone(
-    client: TestClient, session_payload: dict
-) -> None:
+def test_mvp_08_idempotency_key_does_not_reclone(client: TestClient, session_payload: dict) -> None:
     """The second request with the same Idempotency-Key must NOT create a second workspace."""
     headers = {"Idempotency-Key": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
     r1 = client.post("/v1/sessions", json=session_payload, headers=headers)
@@ -502,9 +502,7 @@ def test_mvp_08_idempotency_key_does_not_reclone(
     r2 = client.post("/v1/sessions", json=session_payload, headers=headers)
     workspace2 = Path(r2.json()["workspace"])
 
-    assert workspace1 == workspace2, (
-        "Second idempotent request must return the same workspace path"
-    )
+    assert workspace1 == workspace2, "Second idempotent request must return the same workspace path"
 
 
 def test_mvp_08_different_idempotency_keys_create_different_sessions(
