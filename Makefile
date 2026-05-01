@@ -27,7 +27,7 @@ test:
 	$(BIN)/pytest -q
 
 serve:
-	$(BIN)/uvicorn mad.api.app:create_app --factory --host $(HOST) --port $(PORT)
+	$(BIN)/uvicorn mad.adapters.inbound.http.app:create_app --factory --host $(HOST) --port $(PORT)
 
 clean:
 	rm -rf .pytest_cache **/__pycache__ build dist *.egg-info sessions
