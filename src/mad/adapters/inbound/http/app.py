@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from mad.adapters.inbound.http.dependencies import build_dependencies
+from mad.adapters.inbound.http.routes.events import router as events_router
 from mad.adapters.inbound.http.routes.sessions import router as sessions_router
 from mad.adapters.outbound.agents import factory
 from mad.adapters.outbound.persistence.jsonl_session_repository import ensure_sessions_dir
@@ -83,4 +84,5 @@ def create_app(
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
     app.include_router(sessions_router)
+    app.include_router(events_router)
     return app
