@@ -19,9 +19,9 @@ from mad.adapters.outbound.persistence.local_workspace_provisioner import (
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_bus import EventBus
 from mad.core.events.ports.event_log_query import EventLogQuery
-from mad.core.ports.outbound.session_repository import SessionRepository
-from mad.core.ports.outbound.workspace_provisioner import WorkspaceProvisioner
 from mad.core.sessions import SessionStore
+from mad.core.sessions.ports.outbound.session_repository import SessionRepository
+from mad.core.sessions.ports.outbound.workspace_provisioner import WorkspaceProvisioner
 
 
 def build_dependencies() -> tuple[

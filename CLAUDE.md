@@ -85,9 +85,10 @@ Load-bearing decisions are recorded as ADRs in `docs/adr/` — see `docs/adr/REA
 - `pyproject.toml` — package metadata, dependencies, build backend, and the `mad` console script. Single source of truth for `pip install -e .`.
 - `src/mad/adapters/inbound/http/app.py` — `create_app(store=..., session_repo=..., workspace_provisioner=..., launcher_factory=...)` factory and router wiring.
 - `src/mad/adapters/inbound/http/dependencies.py` — composition root; builds production defaults for all outbound dependencies, including `EventEmitter`.
-- `src/mad/core/domain/` — pure entities, value objects, domain exceptions (no I/O, no framework imports).
-- `src/mad/core/ports/outbound/` — `SessionRepository`, `WorkspaceProvisioner`, `AgentLauncher` Protocol interfaces.
-- `src/mad/core/use_cases/sessions/` — application logic: create, send message, get, list, delete.
+- `src/mad/core/sessions/domain/` — sessions bounded context: `Session` entity, `MountPath` value object, sessions domain exceptions (no I/O, no framework imports).
+- `src/mad/core/sessions/ports/outbound/` — `SessionRepository`, `WorkspaceProvisioner`, `AgentLauncher` Protocol interfaces.
+- `src/mad/core/sessions/use_cases/` — application logic: create, send message, get, list, delete, auto_sync.
+- `src/mad/core/sessions/store.py` — `SessionStore` (in-memory live-session index; re-exported from `mad.core.sessions`).
 - `src/mad/core/use_cases/events/` — cross-session event surface: `QueryEventsUseCase` (`GET /v1/events`) and `StreamEventsUseCase` (`GET /v1/events/stream`).
 - `src/mad/core/events/ports/event_store.py` — narrow `EventStore` port: `append(session_id, type, data) -> Event`; the only persistence surface `EventEmitter` depends on.
 - `src/mad/core/events/emitter.py` — `EventEmitter` single write gateway; depends on `EventStore` + `EventBus`; every use case calls `emit()` here, never the underlying ports directly (hard rule 9).

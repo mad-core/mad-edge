@@ -6,7 +6,7 @@ Each handler:
   3. Calls use_case.execute(input).
   4. Maps the result (or domain exception) to an HTTP response.
 
-Business logic lives in mad.core.use_cases.sessions.*.
+Business logic lives in mad.core.sessions.use_cases.*.
 """
 
 from __future__ import annotations
@@ -14,15 +14,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, Request
 
 from mad.core.sessions import SessionStore
-from mad.core.use_cases.sessions.create_session import (
+from mad.core.sessions.use_cases.create_session import (
     CreateSessionInput,
     CreateSessionUseCase,
     ResourceSpec,
 )
-from mad.core.use_cases.sessions.delete_session import DeleteSessionUseCase
-from mad.core.use_cases.sessions.get_session import GetSessionUseCase
-from mad.core.use_cases.sessions.list_sessions import ListSessionsUseCase
-from mad.core.use_cases.sessions.send_user_message import (
+from mad.core.sessions.use_cases.delete_session import DeleteSessionUseCase
+from mad.core.sessions.use_cases.get_session import GetSessionUseCase
+from mad.core.sessions.use_cases.list_sessions import ListSessionsUseCase
+from mad.core.sessions.use_cases.send_user_message import (
     SendUserMessageInput,
     SendUserMessageUseCase,
 )

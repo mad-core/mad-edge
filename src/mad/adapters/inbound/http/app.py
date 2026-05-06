@@ -12,14 +12,14 @@ from mad.adapters.inbound.http.routes.events import router as events_router
 from mad.adapters.inbound.http.routes.sessions import router as sessions_router
 from mad.adapters.outbound.agents import factory
 from mad.adapters.outbound.persistence.jsonl_session_repository import ensure_sessions_dir
-from mad.core.domain.exceptions.base import PathTraversalError, SessionNotFound
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_bus import EventBus
 from mad.core.events.ports.event_log_query import EventLogQuery
-from mad.core.ports.outbound.agent_launcher import AgentLauncher
-from mad.core.ports.outbound.session_repository import SessionRepository
-from mad.core.ports.outbound.workspace_provisioner import WorkspaceProvisioner
 from mad.core.sessions import SessionStore
+from mad.core.sessions.domain.exceptions.base import PathTraversalError, SessionNotFound
+from mad.core.sessions.ports.outbound.agent_launcher import AgentLauncher
+from mad.core.sessions.ports.outbound.session_repository import SessionRepository
+from mad.core.sessions.ports.outbound.workspace_provisioner import WorkspaceProvisioner
 
 
 def create_app(
@@ -44,7 +44,7 @@ def create_app(
     - ``JsonlEventLogQuery`` — read-side query over the same JSONL log.
     - ``EventEmitter`` — single write gateway (EventStore + EventBus).
 
-    Routes delegate to use cases from ``mad.core.use_cases.sessions.*``
+    Routes delegate to use cases from ``mad.core.sessions.use_cases.*``
     and ``mad.core.events.use_cases.*``.
     """
 
