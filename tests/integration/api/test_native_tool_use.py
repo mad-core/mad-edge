@@ -65,9 +65,7 @@ def test_launcher_output_lines_emitted_as_agent_output(
     lines: list[dict] = []
     while time.monotonic() < deadline:
         if log_path.exists():
-            lines = [
-                json.loads(ln) for ln in log_path.read_text().splitlines() if ln.strip()
-            ]
+            lines = [json.loads(ln) for ln in log_path.read_text().splitlines() if ln.strip()]
             if any(e.get("type") == "session.status_idle" for e in lines):
                 break
         time.sleep(0.05)

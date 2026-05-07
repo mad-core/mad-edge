@@ -122,9 +122,7 @@ async def create_session(
 
 
 @router.post("/v1/sessions/{session_id}/messages")
-async def send_message(
-    session_id: str, payload: SendMessageRequest, request: Request
-) -> dict:
+async def send_message(session_id: str, payload: SendMessageRequest, request: Request) -> dict:
     store = _store(request)
 
     use_case = SendUserMessageUseCase(

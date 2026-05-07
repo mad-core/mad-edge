@@ -84,9 +84,7 @@ class DualInterfaceEventStore:
     def __init__(self) -> None:
         self.events: list[dict] = []
 
-    def append_event(
-        self, session_id: str, event_type: str, data: dict | None = None
-    ) -> dict:
+    def append_event(self, session_id: str, event_type: str, data: dict | None = None) -> dict:
         event = {"type": event_type, "session_id": session_id, **(data or {})}
         self.events.append(event)
         return event
