@@ -1,6 +1,18 @@
 # CHANGELOG
 
-<!-- version list -->
+
+## v0.5.0 (2026-05-07)
+
+### Bug Fixes
+
+- **sessions**: Coerce naive datetime filters to UTC on /v1/sessions
+  ([`a9af871`](https://github.com/jlsaco/mad/commit/a9af871690b34d732a00baa13ee002213cbf35b8))
+
+### Features
+
+- **sessions**: Expose created_at/updated_at and filter list endpoint
+  ([`a9a95bb`](https://github.com/jlsaco/mad/commit/a9a95bb535dcdd65a4e297db21903baaf2c78117))
+
 
 ## v0.4.0 (2026-05-07)
 
@@ -62,4 +74,14 @@
 
 ## v0.1.0 (2026-04-15)
 
-- Initial Release
+### Build System
+
+- **pypi**: Rename package to mad-bros
+  ([`fbb828c`](https://github.com/jlsaco/mad/commit/fbb828cc0e8501fa846725bb1d2d430cecc479e4))
+
+### Features
+
+- Initialize project infrastructure for Mad v0.1
+  ([`1494569`](https://github.com/jlsaco/mad/commit/1494569f02344b9b0a923446f765801e37f728ec))
+- **api**: Implement session management and provider interfaces
+  ([`b232a75`](https://github.com/jlsaco/mad/commit/b232a756af10e05e32bfd8e635380bdb3f6c2aff))
