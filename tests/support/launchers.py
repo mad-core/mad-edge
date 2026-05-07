@@ -13,6 +13,28 @@ from pathlib import Path
 from typing import Any
 
 
+class RecordingLauncher:
+    """AgentLauncher test double that records the prompt of every run
+    and emits a single ``session.status_idle`` event per call.
+
+    Used by tests that only care about *which prompts* the use case
+    invokes the launcher with (e.g. issue #8 auto-sync verifies that
+    a second post-run invocation receives the auto-sync prompt).
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def run(
+        self,
+        prompt: str,
+        workspace: Path,
+        emit: Callable[[str, dict | None], Coroutine[Any, Any, None]],
+    ) -> None:
+        self.calls.append(prompt)
+        await emit("session.status_idle", {"stop_reason": "end_turn"})
+
+
 class ScriptedLauncher:
     """AgentLauncher test double. Each call to run() consumes the next
     scripted run from the queue and emits its events in order.

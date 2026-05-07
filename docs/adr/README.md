@@ -39,3 +39,7 @@ What else was on the table, and why did we reject it?
 | [ADR-0001](0001-testing-strategy.md) | Testing strategy and coverage thresholds | Accepted |
 | [ADR-0002](0002-quality-tooling-bundle.md) | Quality tooling bundle (ruff, mypy, import-linter, pre-commit, gitleaks, pip-audit) | Accepted |
 | [ADR-0003](0003-package-layout.md) | Package layout (hexagonal, ports-and-adapters) | Accepted |
+| [ADR-0004](0004-events-module-vocabulary-and-scope.md) | Events module: vocabulary, scope, and deferred translation | Accepted |
+| [ADR-0005](0005-uuidv7-event-id.md) | UUIDv7 `event_id` for Last-Event-ID catch-up | Accepted |
+| [ADR-0006](0006-multi-tenancy-deferred.md) | Multi-tenancy deferred | Accepted |
+| [ADR-0007](0007-single-write-gateway-event-emitter.md) | Single write gateway: EventEmitter | Accepted |

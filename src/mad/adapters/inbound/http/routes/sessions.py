@@ -6,32 +6,64 @@ Each handler:
   3. Calls use_case.execute(input).
   4. Maps the result (or domain exception) to an HTTP response.
 
-Business logic lives in mad.core.use_cases.sessions.*.
+Business logic lives in mad.core.sessions.use_cases.*.
 """
 
 from __future__ import annotations
 
-import json
+from typing import Any, Literal
 
 from fastapi import APIRouter, Header, Request
-from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from mad.core.sessions import SessionStore
-from mad.core.use_cases.sessions.create_session import (
+from mad.core.sessions.use_cases.create_session import (
     CreateSessionInput,
     CreateSessionUseCase,
     ResourceSpec,
 )
-from mad.core.use_cases.sessions.delete_session import DeleteSessionUseCase
-from mad.core.use_cases.sessions.get_session import GetSessionUseCase
-from mad.core.use_cases.sessions.list_sessions import ListSessionsUseCase
-from mad.core.use_cases.sessions.send_user_message import (
+from mad.core.sessions.use_cases.delete_session import DeleteSessionUseCase
+from mad.core.sessions.use_cases.get_session import GetSessionUseCase
+from mad.core.sessions.use_cases.list_sessions import ListSessionsUseCase
+from mad.core.sessions.use_cases.send_user_message import (
     SendUserMessageInput,
     SendUserMessageUseCase,
 )
-from mad.core.use_cases.sessions.stream_session_events import StreamSessionEventsUseCase
 
-router = APIRouter()
+router = APIRouter(tags=["sessions"])
+
+
+class AgentSpec(BaseModel):
+    model_config = {"extra": "allow"}
+
+    name: str = Field(..., description="Human-readable agent name.")
+    provider: str = Field(
+        ..., description="Launcher key, e.g. 'claude_cli'. Used to resolve AgentLauncher."
+    )
+
+
+class ResourceCheckout(BaseModel):
+    branch: str | None = None
+    ref: str | None = None
+
+
+class ResourceRequest(BaseModel):
+    type: Literal["github_repository", "file"]
+    mount_path: str
+    url: str = ""
+    authorization_token: str | None = None
+    checkout: ResourceCheckout | dict[str, Any] | None = None
+    content: str = ""
+
+
+class CreateSessionRequest(BaseModel):
+    agent: AgentSpec
+    resources: list[ResourceRequest] = Field(default_factory=list)
+    base_branch: str | None = None
+
+
+class SendMessageRequest(BaseModel):
+    content: str
 
 
 def _store(request: Request) -> SessionStore:
@@ -48,88 +80,59 @@ def _provisioner(request: Request):
 
 @router.post("/v1/sessions")
 async def create_session(
+    payload: CreateSessionRequest,
     request: Request,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict:
     store = _store(request)
-    body = await request.json()
-    agent = body["agent"]
-    raw_resources = body.get("resources", [])
-    base_branch = body.get("base_branch")
 
     resource_specs = [
         ResourceSpec(
-            type=r["type"],
-            mount_path=r["mount_path"],
-            url=r.get("url", ""),
-            authorization_token=r.get("authorization_token"),
-            checkout=r.get("checkout"),
-            content=r.get("content", ""),
+            type=r.type,
+            mount_path=r.mount_path,
+            url=r.url,
+            authorization_token=r.authorization_token,
+            checkout=(
+                r.checkout.model_dump(exclude_none=True)
+                if isinstance(r.checkout, ResourceCheckout)
+                else r.checkout
+            ),
+            content=r.content,
         )
-        for r in raw_resources
+        for r in payload.resources
     ]
 
     use_case = CreateSessionUseCase(
-        repo=_repo(request),
         provisioner=_provisioner(request),
         sessions_index=store.sessions,
         idempotency_index=store.idempotency,
+        emitter=request.app.state.event_emitter,
     )
 
-    output = use_case.execute(
+    output = await use_case.execute(
         CreateSessionInput(
-            agent=agent,
+            agent=payload.agent.model_dump(),
             resources=resource_specs,
             idempotency_key=idempotency_key,
-            base_branch=base_branch,
+            base_branch=payload.base_branch,
         )
     )
-
-    # Ensure SSE queue exists for the session
-    store.get_or_create_queue(output.session.session_id)
 
     return output.session.response
 
 
-@router.post("/v1/sessions/{session_id}/events")
-async def send_events(session_id: str, request: Request) -> dict:
+@router.post("/v1/sessions/{session_id}/messages")
+async def send_message(session_id: str, payload: SendMessageRequest, request: Request) -> dict:
     store = _store(request)
-    body = await request.json()
-    events = body.get("events", [])
 
     use_case = SendUserMessageUseCase(
-        repo=_repo(request),
         sessions_index=store.sessions,
-        sse_queues=store.sse_queues,
         get_launcher=request.app.state.launcher_factory,
+        emitter=request.app.state.event_emitter,
     )
-
-    for event in events:
-        if event.get("type") == "user.message":
-            content = event.get("content", "")
-            use_case.execute(SendUserMessageInput(session_id=session_id, content=content))
+    use_case.execute(SendUserMessageInput(session_id=session_id, content=payload.content))
 
     return {"status": "accepted"}
-
-
-@router.get("/v1/sessions/{session_id}/stream")
-async def stream_session(session_id: str, request: Request) -> StreamingResponse:
-    store = _store(request)
-
-    use_case = StreamSessionEventsUseCase(
-        sessions_index=store.sessions,
-        sse_queues=store.sse_queues,
-    )
-    queue = use_case.execute(session_id)
-
-    async def event_generator():
-        while True:
-            event = await queue.get()
-            if event is None:
-                break
-            yield f"data: {json.dumps(event)}\n\n"
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @router.get("/v1/sessions/{session_id}")
@@ -154,7 +157,10 @@ async def get_session(session_id: str, request: Request) -> dict:
 async def list_sessions(request: Request) -> list:
     store = _store(request)
 
-    use_case = ListSessionsUseCase(sessions_index=store.sessions)
+    use_case = ListSessionsUseCase(
+        sessions_index=store.sessions,
+        repo=_repo(request),
+    )
     summaries = use_case.execute()
     return [{"session_id": s.session_id, "status": s.status} for s in summaries]
 
@@ -166,7 +172,7 @@ async def delete_session(session_id: str, request: Request) -> dict:
     use_case = DeleteSessionUseCase(
         provisioner=_provisioner(request),
         sessions_index=store.sessions,
-        sse_queues=store.sse_queues,
+        emitter=request.app.state.event_emitter,
     )
-    output = use_case.execute(session_id)
+    output = await use_case.execute(session_id)
     return {"status": output.status, "session_id": output.session_id}

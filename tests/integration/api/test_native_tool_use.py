@@ -53,16 +53,25 @@ def test_launcher_output_lines_emitted_as_agent_output(
     session_id = data["session_id"]
 
     r = client.post(
-        f"/v1/sessions/{session_id}/events",
-        json={"events": [{"type": "user.message", "content": "stream output please"}]},
+        f"/v1/sessions/{session_id}/messages",
+        json={"content": "stream output please"},
     )
-    assert r.status_code in (200, 202)
+    assert r.status_code == 200
 
-    # Allow the background task to complete (FakeLauncher is instant)
-    time.sleep(0.2)
-
+    # Poll on state, not time (rule 7): wait until the launcher completes
+    # and session.status_idle is appended to the log.
     log_path = Path("sessions") / f"{session_id}.jsonl"
-    lines = [json.loads(ln) for ln in log_path.read_text().splitlines() if ln.strip()]
+    deadline = time.monotonic() + 5.0
+    lines: list[dict] = []
+    while time.monotonic() < deadline:
+        if log_path.exists():
+            lines = [json.loads(ln) for ln in log_path.read_text().splitlines() if ln.strip()]
+            if any(e.get("type") == "session.status_idle" for e in lines):
+                break
+        time.sleep(0.05)
+    assert any(e.get("type") == "session.status_idle" for e in lines), (
+        f"expected session.status_idle within deadline; got types={[e.get('type') for e in lines]}"
+    )
 
     output_events = [e for e in lines if e.get("type") == "agent.output"]
     assert len(output_events) == 3, (

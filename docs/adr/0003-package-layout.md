@@ -11,19 +11,28 @@ This ADR records the layout as a structural decision so CLAUDE.md can keep only 
 
 ## Decision
 
-The codebase follows a hexagonal / ports-and-adapters layout under `src/mad/`:
+The codebase follows a hexagonal / ports-and-adapters layout under `src/mad/`. Inside `mad.core`, code is organised **domain-first**: each bounded context owns its own `domain/`, `ports/`, and `use_cases/` subtree, instead of grouping all entities, ports, and use cases under three top-level layers.
 
 ```
 src/mad/
 ├── core/
-│   ├── domain/          — pure entities, value objects, domain exceptions (no I/O)
-│   ├── ports/outbound/  — Protocol interfaces (SessionRepository, WorkspaceProvisioner, AgentLauncher)
-│   └── use_cases/       — application logic orchestrating domain + ports
+│   ├── sessions/                    — sessions bounded context
+│   │   ├── domain/                  — Session entity, MountPath, sessions exceptions
+│   │   ├── ports/outbound/          — SessionRepository, WorkspaceProvisioner, AgentLauncher
+│   │   ├── use_cases/               — create, send, get, list, delete, auto_sync
+│   │   └── store.py                 — SessionStore (in-memory live index, no I/O)
+│   └── events/                      — events bounded context
+│       ├── domain/                  — Event, EventId
+│       ├── ports/                   — EventBus, EventStore, EventLogQuery
+│       ├── use_cases/               — query_events, stream_events
+│       └── emitter.py               — EventEmitter (single write gateway)
 ├── adapters/
-│   ├── inbound/http/    — FastAPI app, routes, dependencies.py (composition root)
-│   └── outbound/        — persistence, agents (real launcher implementations only)
-└── entry_points/cli.py  — uvicorn entry point, console script
+│   ├── inbound/http/                — FastAPI app, routes, dependencies.py (composition root)
+│   └── outbound/                    — persistence, agents (real launcher implementations only)
+└── entry_points/cli.py              — uvicorn entry point, console script
 ```
+
+A `core/shared/` package is intentionally **not** introduced. It is created only when there is at least one concrete cross-cutting type that genuinely cannot live inside a single bounded context — a "shared" drawer with no clear owner becomes a catch-all and erodes the bounded-context boundaries.
 
 Invariants (these do not change without a superseding ADR):
 

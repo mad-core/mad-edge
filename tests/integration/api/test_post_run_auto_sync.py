@@ -110,12 +110,27 @@ def test_base_branch_persisted_in_session_log(client: TestClient, repo_with_bran
             }
         ],
     }
-    r = client.post("/v1/sessions", json=payload)
-    session_id = r.json()["session_id"]
-    # Session entity persists base_branch; the JSONL log records the
-    # session.created event but base_branch lives on the in-memory session.
+    create = client.post("/v1/sessions", json=payload)
+    assert create.status_code == 200
+    created = create.json()
+    session_id = created["session_id"]
+
+    # The Session entity persists base_branch; the JSONL log records
+    # session.created. GET must succeed (shape) AND the workspace clone
+    # must actually be on the requested base_branch (value).
     r = client.get(f"/v1/sessions/{session_id}")
     assert r.status_code == 200
+
+    local_path = Path(created["resources_mounted"][0]["local_path"])
+    head = subprocess.run(
+        ["git", "-C", str(local_path), "rev-parse", "--abbrev-ref", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert head.stdout.strip() == "develop", (
+        f"workspace must be checked out on base_branch=develop; got {head.stdout!r}"
+    )
 
 
 def test_post_run_auto_sync_invokes_second_launcher_run(
@@ -130,16 +145,15 @@ def test_post_run_auto_sync_invokes_second_launcher_run(
     )
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
     r = client.post(
-        f"/v1/sessions/{session_id}/events",
-        json={"events": [{"type": "user.message", "content": "do work"}]},
+        f"/v1/sessions/{session_id}/messages",
+        json={"content": "do work"},
     )
-    assert r.status_code in (200, 202)
+    assert r.status_code == 200
 
-    # Drain the SSE stream to ensure the background task completed.
-    with client.stream("GET", f"/v1/sessions/{session_id}/stream") as resp:
-        for line in resp.iter_lines():
-            if line.startswith("data:"):
-                pass
+    # Poll until both launcher runs complete (primary + auto-sync).
+    deadline = time.monotonic() + 5.0
+    while len(fake_launcher.calls) < 2 and time.monotonic() < deadline:
+        time.sleep(0.05)
 
     assert len(fake_launcher.calls) == 2, (
         f"expected 2 launcher invocations (primary + auto-sync), got {len(fake_launcher.calls)}"
@@ -180,8 +194,8 @@ def test_post_run_auto_sync_uses_base_branch_in_prompt(
     }
     session_id = client.post("/v1/sessions", json=payload).json()["session_id"]
     client.post(
-        f"/v1/sessions/{session_id}/events",
-        json={"events": [{"type": "user.message", "content": "go"}]},
+        f"/v1/sessions/{session_id}/messages",
+        json={"content": "go"},
     )
 
     deadline = time.monotonic() + 2.0
@@ -206,12 +220,14 @@ def test_post_run_auto_sync_runs_even_when_primary_fails(
     )
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
     client.post(
-        f"/v1/sessions/{session_id}/events",
-        json={"events": [{"type": "user.message", "content": "go"}]},
+        f"/v1/sessions/{session_id}/messages",
+        json={"content": "go"},
     )
-    with client.stream("GET", f"/v1/sessions/{session_id}/stream") as resp:
-        for _ in resp.iter_lines():
-            pass
+
+    # Poll until both launcher runs complete (primary + auto-sync).
+    deadline = time.monotonic() + 5.0
+    while len(fake_launcher.calls) < 2 and time.monotonic() < deadline:
+        time.sleep(0.05)
 
     assert len(fake_launcher.calls) == 2
 

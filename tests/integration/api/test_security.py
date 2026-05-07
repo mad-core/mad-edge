@@ -223,16 +223,25 @@ def test_token_not_in_stderr_of_launcher(
     session_id = data["session_id"]
 
     r = client.post(
-        f"/v1/sessions/{session_id}/events",
-        json={"events": [{"type": "user.message", "content": "go"}]},
+        f"/v1/sessions/{session_id}/messages",
+        json={"content": "go"},
     )
-    assert r.status_code in (200, 202)
+    assert r.status_code == 200
 
-    # Allow background task to complete
-    time.sleep(0.2)
-
+    # Poll on state, not time (rule 7): wait until the agent completes
+    # and the launcher's agent.output line lands in the log.
     log_path = Path("sessions") / f"{session_id}.jsonl"
-    log_contents = log_path.read_text()
+    deadline = time.monotonic() + 5.0
+    log_contents = ""
+    while time.monotonic() < deadline:
+        if log_path.exists():
+            log_contents = log_path.read_text()
+            if "session.status_idle" in log_contents:
+                break
+        time.sleep(0.05)
+    assert "session.status_idle" in log_contents, (
+        "expected session.status_idle in log within deadline (token-redaction test setup)"
+    )
     assert token not in log_contents, (
         "authorization_token must NOT appear in the session log JSONL, even in agent.output events"
     )
