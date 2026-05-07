@@ -43,7 +43,7 @@ dev = [
   "pre-commit>=3.7",
   "build>=1.2",
   "twine>=5.1",
-  "python-semantic-release>=9.8",
+  "python-semantic-release>=10.5.3",
 ]
 
 [project.scripts]
@@ -216,6 +216,23 @@ tag_format = "v{version}"
 
 [tool.semantic_release.changelog]
 changelog_file = "CHANGELOG.md"
+# Custom Jinja templates: render only `- <subject> ([hash](link))` per entry,
+# no commit body, no Co-Authored-By, no Refs #N. See templates/.components/changes.md.j2.
+template_dir = "templates"
+# Keep CHANGELOG.md focused on consumer-visible changes. Internal commit types
+# still bump versions per Conventional Commits, but do not appear in release
+# notes. Externally-visible refactors must be authored as `feat!:` / `fix!:`
+# (see CLAUDE.md) so the `!` puts them back in the changelog.
+exclude_commit_patterns = [
+  '''^chore(?:\([^)]*\))?(!)?: ''',
+  '''^style(?:\([^)]*\))?(!)?: ''',
+  '''^docs(?:\([^)]*\))?(!)?: ''',
+  '''^test(?:\([^)]*\))?(!)?: ''',
+  '''^refactor(?:\([^)]*\))?(!)?: ''',
+  '''^ci(?:\([^)]*\))?(!)?: ''',
+  '''^build(?:\([^)]*\))?(!)?: ''',
+  '''^revert(?:\([^)]*\))?(!)?: ''',
+]
 
 [tool.semantic_release.branches.main]
 match = "main"
