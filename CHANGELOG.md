@@ -1,6 +1,433 @@
 # CHANGELOG
 
 
+## v0.4.0 (2026-05-07)
+
+### Bug Fixes
+
+- **http**: Type request bodies with Pydantic and tolerate invalid Last-Event-ID
+  ([`fe0f8c3`](https://github.com/jlsaco/mad/commit/fe0f8c3b8a2628eecb3d32cd40a2015c3f0e25e9))
+
+POST /v1/sessions and /v1/sessions/{id}/messages now declare Pydantic body models
+  (CreateSessionRequest, SendMessageRequest, AgentSpec, ResourceRequest), so OpenAPI / Postman /
+  /docs expose the schema. Replaces the previous raw `await request.json()` pattern that left
+  clients guessing at the contract.
+
+GET /v1/events/stream no longer 400s on a missing, empty, or malformed Last-Event-ID header — a
+  tolerant `_parse_last_event_id` helper treats any non-UUID as "no catch-up" and opens the stream
+  normally. This unblocks SSE clients (Postman, browsers) that auto-attach the header on first
+  connect or reconnect with a stale value.
+
+The previous test that asserted the 400 behavior codified the bug as contract; replaced with a unit
+  test against the helper (the long-lived async generator deadlocks TestClient consumption — a
+  follow-up should add a real httpx.AsyncClient stream test per testing-heuristics rule 6).
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **sessions**: List every persisted session, not just the in-memory ones
+  ([`55e0647`](https://github.com/jlsaco/mad/commit/55e0647eff37e524ae5700815efb9b1d19011c80))
+
+GET /v1/sessions only iterated the per-process in-memory index, so restarting the server (or hitting
+  the endpoint after a crash) hid every session that already had a JSONL log on disk — only the most
+  recent live session showed up.
+
+ListSessionsUseCase now unions the in-memory index with SessionRepository.list_session_ids() and
+  rehydrates disk-only entries through a shared domain helper, so the listing matches CLAUDE.md hard
+  rule 6 (JSONL is the source of truth) the same way GetSession already did. Live sessions still win
+  over disk on status to reflect transitions not yet flushed.
+
+- Add SessionRepository.list_session_ids() port + JSONL implementation. - Extract
+  rehydrate_from_events() to mad.core.sessions.domain.rehydrate and reuse it from GetSession and
+  ListSessions. - Inject the repo into ListSessionsUseCase and the HTTP route.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+### Chores
+
+- Ignore hook-events/ workdir
+  ([`5a519b7`](https://github.com/jlsaco/mad/commit/5a519b78503741b131ca9c907ca08aecc975e23e))
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **claude**: Add testing heuristics, write-test skill, test-critic agent, /work step 7.5
+  ([`bd1507d`](https://github.com/jlsaco/mad/commit/bd1507de96a42ee42d76bd73bcd4632c0d707983))
+
+Adds the mechanism that prevents the test-quality regressions surfaced by the May 2026 audit
+  (tautological tests, weak assertions, inline fakes, missing OpenAPI / SSE contract tests,
+  time-based polling).
+
+Five layers of enforcement:
+
+1. CLAUDE.md hard rules 9 (HTTP I/O strongly typed) and 10 (the seven testing heuristics). Existing
+  rule for EventEmitter renumbered to 11. 2. docs/testing-heuristics.md — the seven rules with
+  bad/good examples citing the audit findings, plus a pre-merge checklist. 3.
+  .claude/skills/write-test/ — auto-invoked when modifying tests; embeds operational checklist,
+  refuses to weaken tests. 4. .claude/agents/write-test.md and .claude/agents/test-critic.md —
+  spawnable subagents. Critic is read-only and mechanical (PASS/FAIL with file:line + rule number);
+  writer addresses critic findings without rewriting unrelated tests. 5. /work Step 7.5 —
+  generator/critic loop (max 3 iterations) between Execute and Verify. Escapes via AskUserQuestion
+  if not converged, recording unresolved findings as "Known test debt" in the PR body.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **testing**: Add rule 8 (terminate) + pytest-timeout safety net
+  ([`9aa446b`](https://github.com/jlsaco/mad/commit/9aa446bb91b9012a81b5a51d770797c0930eff37))
+
+Adds an eighth testing heuristic mandating that every test terminate well below a global 15s
+  pytest-timeout cap, after a SSE route-level test added by write-test hung the suite indefinitely
+  (httpx.AsyncClient.stream against an unbounded StreamingResponse never aborts on close). Without
+  pytest-timeout configured, any such hang freezes make test for everyone.
+
+- pyproject.toml: dev dep pytest-timeout>=2.3, timeout=15, timeout_method=thread -
+  docs/testing-heuristics.md: new rule 8 + rewritten rule 6 (bounded source or helper-only; never
+  c.stream against an infinite generator) - CLAUDE.md: hard rule 10 references rule 8 and the
+  bounded-source mandate - .claude/agents/test-critic.md: mechanical greps for rule 8 (while True,
+  async for unbounded, await without wait_for, c.stream against known infinite routes) -
+  .claude/agents/write-test.md: refuses to touch src/, refuses unbounded loops, refuses streaming
+  tests it cannot bound - .claude/skills/write-test/SKILL.md: rules 1-8 in checklist
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+### Code Style
+
+- Apply ruff format
+  ([`4507bd5`](https://github.com/jlsaco/mad/commit/4507bd5a6118012385605c71c40b4db1d896360c))
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- Apply ruff format to events module
+  ([`f999f36`](https://github.com/jlsaco/mad/commit/f999f36623f97c4886147dcc0018a6d3611ec254))
+
+Pure whitespace fixes — collapses single-expression conditionals and function signatures into the
+  canonical ruff-format shape. No behavior or import changes. Unblocks the lint workflow on this
+  branch.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+- Trim trailing blank lines in get_session.py
+  ([`5aeca33`](https://github.com/jlsaco/mad/commit/5aeca333fb83fd5077c69d7320c9b1c4227c4a7e))
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **docs**: Strip trailing whitespace from ADR-0006
+  ([`ca672f1`](https://github.com/jlsaco/mad/commit/ca672f136e28a7c19d65dac5f9bd8986aec0ff0f))
+
+Caught by pre-commit run --all-files in CI; local commits only scan staged paths so the ADR never
+  tripped trim-trailing-whitespace on its original commit.
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+
+### Documentation
+
+- Add CLAUDE.md hard rule 8 — events module is observability only
+  ([`91f7019`](https://github.com/jlsaco/mad/commit/91f7019305391a833b9e02486e59949c53bae1aa))
+
+Phase 8 of issue #10. Codifies the scope boundary recorded in ADR-0004 as a hard rule so future
+  contributors do not need to re-derive it. Hard rule 8 makes explicit that mad.core.events does NOT
+  translate, classify, dispatch, or orchestrate events; orchestration belongs in a future
+  core/orchestration/ module when concrete external payloads exist.
+
+Refs #10
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **adr**: Record events module scope, UUIDv7 event_id, and deferred multi-tenancy
+  ([`2b8e573`](https://github.com/jlsaco/mad/commit/2b8e573b1e9ba1fca1a1b8a845209007d5c919da))
+
+Foundation phase for issue #10 (cross-session events module). No src/ changes; this commit lands
+  only the architecture decisions that subsequent phases will reference.
+
+- ADR-0004: the events module accepts and emits Mad's vocabulary verbatim; scope is observability
+  only (no orchestration). Records the ?agent= filter resolution semantics and the InMemoryEventBus
+  disconnect-on-overflow policy. - ADR-0005: UUIDv7 event_id minted in
+  JsonlSessionRepository.append_event to make Last-Event-ID catch-up work without a new persistence
+  layer; no backfill of pre-existing logs. - ADR-0006: multi-tenancy explicitly deferred until Mad
+  itself gains tenants; no tenant_id placeholder fields.
+
+Refs #10
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **events**: High-level architecture diagram with bounded contexts
+  ([`bbf5204`](https://github.com/jlsaco/mad/commit/bbf52043939d7b18b10794215ea66881dbaab6b3))
+
+Replaces the dense per-flow diagram with a high-level view that makes the hexagonal layers explicit
+  and shows core/events as a separate bounded context that owns the event log. Producer domains
+  (core/sessions today, others in the future) emit through EventEmitter; core/events is the only
+  module that persists or publishes events.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **events**: Rewrite events-architecture diagram and prose
+  ([`74f2c51`](https://github.com/jlsaco/mad/commit/74f2c51d1394a0875ece04ef108dff35a1be8574))
+
+The previous diagram had several inaccuracies that accumulated across the last few changes (legacy
+  stream removal + EventEmitter introduction):
+
+- Wrong route name (`/sessions/:id/message` → `/sessions/:id/events`) - Missing `POST /v1/sessions`
+  entry point for CreateSessionUseCase - Agent stdout shown as flowing directly into the use case
+  instead of through the launcher → emit() wrapper → emitter - StreamEvents shown as bus-only —
+  missing the Last-Event-ID replay path through EventLogQuery and the dedup boundary - Port/adapter
+  arrows reversed (ports were drawn calling adapters; they are protocols, adapters implement them) -
+  Token redaction (hard rule 2) and status mutation in the launcher callback wrapper not represented
+
+The new diagram makes the four flows explicit (create, send, query, stream), shows the implements
+  relationship as dashed edges, and the prose spells out the ADR-0004 dedup protocol and the
+  slow-subscriber policy.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+### Features
+
+- **api**: Add /v1/events and /v1/events/stream endpoints
+  ([`5b5bdc1`](https://github.com/jlsaco/mad/commit/5b5bdc186001e93518b578530e78e9e0e5634918))
+
+Phase 7 of issue #10 — the HTTP surface for the events module.
+
+GET /v1/events Paginated historical query. Filters: session_id, kind, agent, since (ISO timestamp),
+  after_event_id (UUID cursor). limit defaults to 100, capped at 1000 by FastAPI's ge/le validation.
+  Response shape: { events: [...], next_cursor: <uuid|null> }.
+
+GET /v1/events/stream Long-lived SSE endpoint. Same filters as /v1/events plus the standard
+  Last-Event-ID request header for reconnect. Each frame is rendered as `id: <event_id>\ndata:
+  <json>\n\n`. Live-tail behavior is unit-tested at the use-case level
+  (tests/unit/core/events/use_cases/); end-to-end SSE consumption against TestClient deadlocks
+  because the stream is intentionally long-lived, so the integration tests verify only the
+  synchronous-failure path (invalid Last-Event-ID -> 400 via the existing ValueError handler).
+
+create_app wires the events router alongside the sessions router. Parameters use FastAPI's
+  Annotated[T, Query()] form so ruff's B008 doesn't flag them.
+
+Refs #10
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **core**: Add InMemoryEventBus and JsonlEventLogQuery adapters
+  ([`8e5ce11`](https://github.com/jlsaco/mad/commit/8e5ce11b337590c153ebdf44eb3e88295f295430))
+
+Phase 4 of issue #10 — outbound adapters for the events module ports.
+
+InMemoryEventBus asyncio fanout with a per-subscriber bounded queue. When the queue fills the bus
+  pushes a disconnect sentinel, removes the subscriber, and never blocks the publisher (ADR-0004).
+  The internal queue size is `max_queue_size + 1` so the sentinel always fits even at full capacity.
+
+JsonlEventLogQuery Reads sessions/*.jsonl directly (hard rule 6 — single source of truth). Applies
+  session_id, kind, since, after_event_id, and the pre-resolved agent session set server-side. Sorts
+  by textual event_id; legacy events without an id surface with `event_id=None` and sort first
+  (ADR-0005). `session_ids_for_agent` resolves an agent name by scanning `session.created` events.
+
+Tests land with src per Option A (rule 4.4): one behavior-rich integration test per filter
+  dimension, plus the slow-subscriber disconnect, the Last-Event-ID catch-up, the agent resolution,
+  and the legacy-event surface paths.
+
+Refs #10
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **core**: Add StreamEventsUseCase and QueryEventsUseCase
+  ([`0410d05`](https://github.com/jlsaco/mad/commit/0410d051efdd66ba61d702e34d668069cff64c21))
+
+Phase 5 of issue #10 — the inbound surface for the events module.
+
+StreamEventsUseCase Filtered live tail with optional Last-Event-ID catch-up. Subscribes to the bus
+  BEFORE replay so live events arriving during replay are buffered, not lost. The dedup boundary is
+  fixed at end-of-replay (a "dedup_until" event_id); within-millisecond UUIDv7 ordering is random
+  per ADR-0005, so the use case deliberately does not advance the boundary from live events
+  themselves.
+
+QueryEventsUseCase Paginated historical query. Resolves ?agent=<name> via the log, clamps limit to
+  MAX_LIMIT (1000), and returns a next_cursor (the last event's event_id) when more results are
+  available.
+
+Test doubles for unit tests live under tests/support/events.py per ADR-0003. FakeEventBus buffers
+  pre-subscribe publishes so test ordering does not depend on consumer task scheduling. Tests use a
+  deterministic event_id helper for ordering-sensitive cases.
+
+Tests land with src per Option A (rule 4.4): they verify the replay-then-live order, dedup boundary,
+  agent resolution, limit clamp, and cursor semantics.
+
+Refs #10
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **core**: Inject UUIDv7 event_id on every persisted event
+  ([`cb4cd1d`](https://github.com/jlsaco/mad/commit/cb4cd1d822aa19b5c63e25c911d5367bf8d40c89))
+
+Phase 3 of issue #10 — ADR-0005 implementation.
+
+`JsonlSessionRepository.append_event` now mints a UUIDv7 via
+  `mad.core.events.domain.event_id.new_event_id` and writes it as the first field on each JSONL
+  record. Cross-session ordering and SSE `Last-Event-ID` catch-up rely on this id.
+
+Pre-existing log lines without an `event_id` remain readable; the events query layer (Phase 5) will
+  surface them with `event_id: null` until those sessions age out.
+
+Tests land with src per Option A (rule 4.4): they directly verify the new injection behavior,
+  including the within-millisecond random ordering caveat documented in ADR-0005.
+
+Refs #10
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **core**: Scaffold events module domain and ports
+  ([`b846da9`](https://github.com/jlsaco/mad/commit/b846da92c4c086669cac087f1dc248c5ce68a949))
+
+Phase 2 of issue #10 — adds the `mad.core.events` package skeleton: the Event entity, the inline
+  UUIDv7 minting helper (RFC 9562, no new runtime dep per ADR-0005), and the EventBus +
+  EventLogQuery Protocol ports that subsequent phases consume.
+
+Domain and ports are framework-free and adapter-free per CLAUDE.md hard rule 4; the existing
+  import-linter contract already covers the new subpackage.
+
+Tests land with src per Option A (commit rule 4.4): they directly verify the new entity and helper.
+
+Refs #10
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **core**: Wire EventBus into SendUserMessage and create_app
+  ([`2edcb0a`](https://github.com/jlsaco/mad/commit/2edcb0a5850b055a2f5bbd977c4b44a9e8a698a6))
+
+Phase 6 of issue #10 — connects the events module to Mad's existing session lifecycle.
+
+SendUserMessageUseCase now requires an EventBus and publishes every event it appends to the
+  repository: the synchronous user.message append (via asyncio.create_task) and every status_running
+  / agent.output / status_idle / session.error emitted during the primary run and the post-run
+  auto-sync. `_emit_and_push` is async; publish happens after append so the JSONL log remains the
+  source of truth (hard rule 6).
+
+create_app gains optional `event_bus` and `event_log_query` parameters following the existing DI
+  pattern; build_dependencies returns the production defaults (InMemoryEventBus,
+  JsonlEventLogQuery). The HTTP route for POST /v1/sessions/{id}/events passes app.state.event_bus
+  into the use case.
+
+A small `event_from_persisted` helper lives in mad.core.events.domain.event so both this use case
+  and JsonlEventLogQuery share one parsing path. The query adapter is refactored to use it (no
+  behavior change).
+
+Existing SendUserMessage tests inject a FakeEventBus from tests/support/events. A new unit test
+  verifies the publish-on-append contract: every event in repo.events appears on bus.published in
+  the same order.
+
+Refs #10
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **sessions**: Emit session.deleted via EventEmitter on delete
+  ([`c1d1d52`](https://github.com/jlsaco/mad/commit/c1d1d5217bf010e30147f7ab6002739ddd7f70d5))
+
+DeleteSessionUseCase now emits session.deleted through the EventEmitter, making the JSONL log a
+  complete record of a session's lifetime (create → run → delete) and surfacing the deletion to live
+  subscribers of /v1/events/stream.
+
+The event carries {"final_status": <status before deletion>} so consumers can tell whether a session
+  was deleted while idle, running, or in error.
+
+execute is now async; the HTTP delete handler awaits it.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+### Refactoring
+
+- **api**: Remove legacy /v1/sessions/{id}/stream superseded by /v1/events/stream
+  ([`8f18851`](https://github.com/jlsaco/mad/commit/8f18851f4460fcad39c6665c03fe07b70953b3d5))
+
+The new cross-session events surface (GET /v1/events, GET /v1/events/stream) fully supersedes the
+  per-session SSE endpoint on every dimension: filtering (session/kind/agent), Last-Event-ID replay,
+  cross-session reach, and typed Event payloads. Keeping both forced SendUserMessageUseCase to know
+  about a legacy SSE queue and write to two delivery paths on every event.
+
+- Delete StreamSessionEventsUseCase and the GET /v1/sessions/{id}/stream handler. - Drop
+  SessionStore.sse_queues / get_or_create_queue / push_event. - Simplify _emit_and_push to a clean
+  persist -> publish two-step (renamed _emit). - Drop sse_queues parameter from
+  SendUserMessageUseCase and DeleteSessionUseCase. - Update tests to poll session status /
+  fake-launcher state instead of draining the legacy queue; ASYNC110 added to the tests-only ruff
+  ignore list. - Amend ADR-0004 with a 2026-05-06 Revisited note recording the removal. - Update
+  CLAUDE.md key files and the events-architecture diagram.
+
+Co-Authored-By: Claude Sonnet 4.6 (1M context) <noreply@anthropic.com>
+
+- **api**: Rename POST /v1/sessions/{id}/events to /messages
+  ([`07d7d16`](https://github.com/jlsaco/mad/commit/07d7d16cd3ad4cf7fe7eff4ae6392c4bb7928a91))
+
+The legacy endpoint accepted a body shaped {"events": [{"type": "user.message", "content": "..."}]}
+  but only ever processed user.message and silently dropped any other type. The "events" naming on
+  an inbound write path also conflicted with the observability-only events module (hard rule 8) and
+  EventEmitter as the single write gateway (hard rule 9).
+
+The new endpoint is POST /v1/sessions/{session_id}/messages with body {"content": "..."} — single
+  message per request, no array, no type discriminator. Behavior is otherwise identical:
+  SendUserMessageUseCase still emits user.message via EventEmitter.
+
+Tag the events router as ["events"] for OpenAPI symmetry with the sessions tag.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **core**: Adopt domain-first bounded-context layout ([#12](https://github.com/jlsaco/mad/pull/12),
+  [`3a457c7`](https://github.com/jlsaco/mad/commit/3a457c77d4f90818dcde5e77958492cb1b94e406))
+
+Align mad.core under one convention: every bounded context owns its own domain/, ports/, and
+  use_cases/ subtree. Sessions modules move under mad.core.sessions to mirror the existing
+  mad.core.events shape.
+
+- Move Session, MountPath, sessions exceptions under sessions/domain/ - Move SessionRepository,
+  AgentLauncher, WorkspaceProvisioner under sessions/ports/outbound/ - Move all sessions use cases
+  under sessions/use_cases/ - Rename top-level sessions.py to sessions/store.py; re-export
+  SessionStore from sessions/__init__.py - Mirror the new layout in
+  tests/unit/core/sessions/{domain,use_cases,test_store.py} - Update ADR-0003 and CLAUDE.md to
+  document the domain-first layout and the deliberate omission of shared/
+
+No behavior change. Public HTTP API, ports, and test fixtures unchanged. import-linter contract on
+  mad.core remains valid.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **events**: Introduce EventEmitter as single write gateway for the session log
+  ([`960f735`](https://github.com/jlsaco/mad/commit/960f73518d5f23669f484e6886dc5af583ecf85e))
+
+Adds EventStore port and EventEmitter to make the persist→publish two-step explicit and reusable
+  across use cases. Use cases no longer call SessionRepository.append_event or EventBus.publish
+  directly — both writes go through EventEmitter.emit().
+
+CreateSessionUseCase.execute is now async so session.created flows through the emitter on the same
+  path as every other event, making the JSONL log a complete record of a session's lifetime visible
+  to live subscribers.
+
+- Add src/mad/core/events/ports/event_store.py — narrow append() port - Add
+  src/mad/core/events/emitter.py — EventEmitter(store, bus) with async emit() -
+  JsonlSessionRepository.append() satisfies EventStore (delegates to append_event) -
+  SendUserMessageUseCase: drop repo+event_bus, take emitter - CreateSessionUseCase: drop repo, take
+  emitter, execute is async - Composition root builds and exposes app.state.event_emitter - ADR-0007
+  documents the single-write-gateway rule - CLAUDE.md hard rule 9 promotes the rule project-wide
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+### Testing
+
+- Harden test suite against testing heuristics
+  ([`2faed80`](https://github.com/jlsaco/mad/commit/2faed80ed07e3c978a0c4767f051fad8e99b0060))
+
+Sweep all tests modified on the cross-session events branch through the write-test ↔ test-critic
+  loop. Resolves rule-2/3/4/5/7 findings: pin single status codes, split disjunction assertions,
+  move inline Fake* classes into tests/support/, replace bare time.sleep with state-based polling,
+  and add OpenAPI contract tests for POST /v1/sessions and POST /v1/sessions/{id}/messages.
+
+Rule 6 for GET /v1/events/stream is deliberately deferred — covered at the helper level
+  (_parse_last_event_id); a live httpx.AsyncClient test hung the suite and was removed.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+- **sessions**: Cover ListSessions disk-rehydration and live-wins-over-disk
+  ([`de50c3a`](https://github.com/jlsaco/mad/commit/de50c3abc2054f1def5ffae37bac9b64d6a0bb53))
+
+The use case now unions in-memory and persisted session IDs; extend the unit tests to lock that in:
+  - in-memory listing still returns every live session, - sessions only on disk are rehydrated from
+  their JSONL events, - when the same id is in both, the live status wins, - empty inputs produce an
+  empty list.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+
+
 ## v0.3.0 (2026-05-04)
 
 ### Bug Fixes
