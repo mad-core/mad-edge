@@ -4,49 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from mad.core.events.domain.event import event_from_persisted
 from mad.core.events.emitter import EventEmitter
 from mad.core.sessions.domain.entities.session import Session
 from mad.core.sessions.domain.exceptions.base import SessionNotFound
 from mad.core.sessions.use_cases.delete_session import DeleteSessionUseCase
-
-
-class FakeProvisioner:
-    def __init__(self):
-        self.destroyed: list[str] = []
-
-    def create(self, session_id):
-        pass
-
-    def destroy(self, session_id):
-        self.destroyed.append(session_id)
-
-    def materialize_github_repo(self, *args, **kwargs):
-        pass
-
-    def materialize_file(self, *args, **kwargs):
-        pass
-
-
-class FakeStore:
-    def __init__(self):
-        self.appended: list[tuple[str, str, dict | None]] = []
-
-    def append(self, session_id, type, data=None):
-        self.appended.append((session_id, type, data))
-        raw = {"event_id": None, "type": type, "timestamp": "", **(data or {})}
-        return event_from_persisted(raw, session_id)
-
-
-class FakeBus:
-    def __init__(self):
-        self.published: list = []
-
-    async def publish(self, event):
-        self.published.append(event)
-
-    def subscribe(self, event_filter):  # pragma: no cover - unused here
-        raise NotImplementedError
+from support.events import PersistedEventStore as FakeStore
+from support.events import RecordingEventBus as FakeBus
+from support.sessions import FakeProvisioner
 
 
 def _make_session(session_id="sesn_del", status="idle"):

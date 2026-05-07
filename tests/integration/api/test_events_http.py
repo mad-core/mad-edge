@@ -126,16 +126,6 @@ def test_get_events_rejects_invalid_uuid_cursor(http_client: TestClient) -> None
 
 
 # ---- GET /v1/events/stream --------------------------------------------------
-#
-# Stream behavior (replay → live transition, dedup boundary, filter
-# combinations) is covered exhaustively at the use-case unit-test level
-# in tests/unit/core/events/use_cases/test_stream_events.py. End-to-end
-# SSE consumption against TestClient/httpx is awkward because the
-# response only completes when the server-side async generator returns;
-# our generator is intentionally long-lived (live tail), so consuming
-# the response synchronously deadlocks. The route itself is thin —
-# parameter parsing plus delegation to the use case — and the parsing
-# is covered below by the invalid-UUID path.
 
 
 def test_parse_last_event_id_tolerates_missing_and_invalid() -> None:

@@ -60,7 +60,9 @@ def test_mvp_01_create_session_response_shape(client: TestClient, session_payloa
     r = client.post("/v1/sessions", json=session_payload)
     assert r.status_code == 200
     data = r.json()
-    assert data["session_id"].startswith("sesn_") or len(data["session_id"]) > 0
+    # Two strong assertions: a non-empty id with the documented prefix.
+    assert isinstance(data["session_id"], str) and len(data["session_id"]) > 0
+    assert data["session_id"].startswith("sesn_")
     workspace = Path(data["workspace"])
     assert workspace.exists()
 
@@ -132,7 +134,7 @@ def test_mvp_01b_mixed_resources_provisioned(
 def test_mvp_02_send_user_message_starts_agent(
     client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
-    """POST /v1/sessions/{id}/messages with content returns 200/202."""
+    """POST /v1/sessions/{id}/messages with content is accepted (200)."""
     fake_launcher.script([[{"type": "session.status_idle", "stop_reason": "end_turn"}]])
     session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
 
@@ -140,7 +142,8 @@ def test_mvp_02_send_user_message_starts_agent(
         f"/v1/sessions/{session_id}/messages",
         json={"content": "hello"},
     )
-    assert r.status_code in (200, 202)
+    assert r.status_code == 200
+    assert r.json() == {"status": "accepted"}
 
 
 def test_mvp_02_send_event_to_unknown_session_returns_404(
@@ -173,7 +176,7 @@ def test_mvp_02b_send_event_is_non_blocking(
         json={"content": "go"},
     )
     elapsed = time.monotonic() - start
-    assert r.status_code in (200, 202)
+    assert r.status_code == 200
     # The endpoint must return in well under 5 seconds — if the agent launch were
     # blocking, a slow launcher would stall the response.
     assert elapsed < 5.0, f"messages endpoint took {elapsed:.2f}s — must be non-blocking"
@@ -246,6 +249,11 @@ def test_mvp_04_get_session_returns_final_state(
     assert "status" in data
     assert "events" in data
     assert isinstance(data["events"], list)
+    # Value-level partner: the events list must include the user.message
+    # we just sent, not just be a non-empty list of arbitrary shape.
+    assert any(e.get("type") == "user.message" for e in data["events"]), (
+        f"events missing user.message; got: {[e.get('type') for e in data['events']]}"
+    )
 
 
 def test_mvp_04_get_session_events_include_user_message(
@@ -337,7 +345,7 @@ def test_mvp_05_list_sessions_returns_list(client: TestClient, session_payload: 
     r = client.get("/v1/sessions")
     assert r.status_code == 200
     body = r.json()
-    assert isinstance(body, list) or "sessions" in body
+    assert isinstance(body, list)
 
 
 def test_mvp_05_list_sessions_includes_created_session(
@@ -350,9 +358,9 @@ def test_mvp_05_list_sessions_includes_created_session(
     r = client.get("/v1/sessions")
     assert r.status_code == 200
     body = r.json()
-    sessions = body if isinstance(body, list) else body["sessions"]
+    assert isinstance(body, list)
 
-    ids = [s["session_id"] if isinstance(s, dict) else s for s in sessions]
+    ids = [s["session_id"] for s in body]
     assert session_id in ids, f"session {session_id} not found in listing: {ids}"
 
 
@@ -382,8 +390,8 @@ def test_mvp_06_resume_session_with_new_message(
         f"/v1/sessions/{session_id}/messages",
         json={"content": "second task"},
     )
-    assert r1.status_code in (200, 202)
-    assert r2.status_code in (200, 202)
+    assert r1.status_code == 200
+    assert r2.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -439,7 +447,7 @@ def test_mvp_07_delete_cleans_workspace_preserves_log(
     assert workspace.exists(), "workspace must exist before delete"
 
     r = client.delete(f"/v1/sessions/{session_id}")
-    assert r.status_code in (200, 204)
+    assert r.status_code == 200
     assert not workspace.exists(), "workspace directory must be removed after DELETE"
 
     log_path = Path("sessions") / f"{session_id}.jsonl"
@@ -516,3 +524,71 @@ def test_mvp_08_different_idempotency_keys_create_different_sessions(
         headers={"Idempotency-Key": "key-beta-0002"},
     )
     assert r1.json()["session_id"] != r2.json()["session_id"]
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI contract tests (heuristic rule 5 — every POST/PUT JSON endpoint).
+# ---------------------------------------------------------------------------
+
+
+def _resolve_ref(spec: dict, ref: str) -> dict:
+    """Resolve a local OpenAPI ``$ref`` like ``#/components/schemas/Foo``."""
+    name = ref.rsplit("/", 1)[-1]
+    return spec["components"]["schemas"][name]
+
+
+def test_openapi_post_sessions_declares_body_schema(client: TestClient) -> None:
+    """POST /v1/sessions must declare a required JSON body whose schema
+    marks ``agent`` and ``resources`` as required (rule 5)."""
+    spec = client.get("/openapi.json").json()
+    op = spec["paths"]["/v1/sessions"]["post"]
+    body = op["requestBody"]
+    assert body["required"] is True
+
+    schema = body["content"]["application/json"]["schema"]
+    component = _resolve_ref(spec, schema["$ref"])
+    required = set(component.get("required", []))
+    assert "agent" in required, (
+        f"CreateSessionRequest must mark 'agent' required; got required={required}"
+    )
+    # The agent sub-schema must in turn require name + provider.
+    agent_field = component["properties"]["agent"]
+    agent_component = _resolve_ref(spec, agent_field["$ref"])
+    agent_required = set(agent_component.get("required", []))
+    assert {"name", "provider"}.issubset(agent_required), (
+        f"AgentSpec must require name and provider; got {agent_required}"
+    )
+
+
+def test_openapi_post_messages_declares_body_schema(client: TestClient) -> None:
+    """POST /v1/sessions/{session_id}/messages must declare a required JSON
+    body whose schema marks ``content`` as required (rule 5)."""
+    spec = client.get("/openapi.json").json()
+    op = spec["paths"]["/v1/sessions/{session_id}/messages"]["post"]
+    body = op["requestBody"]
+    assert body["required"] is True
+
+    schema = body["content"]["application/json"]["schema"]
+    component = _resolve_ref(spec, schema["$ref"])
+    required = set(component.get("required", []))
+    assert "content" in required, (
+        f"SendMessageRequest must mark 'content' required; got required={required}"
+    )
+
+
+def test_openapi_post_messages_rejects_missing_content(
+    client: TestClient, fake_launcher, session_payload: dict
+) -> None:
+    """Negative twin for the contract: missing ``content`` returns 422 with
+    a Pydantic-shaped ``detail`` pointing at ``body.content``."""
+    fake_launcher.script([[{"type": "session.status_idle", "stop_reason": "end_turn"}]])
+    session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
+
+    r = client.post(f"/v1/sessions/{session_id}/messages", json={})
+
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert isinstance(detail, list) and len(detail) >= 1
+    assert any(d.get("loc") == ["body", "content"] for d in detail), (
+        f"422 detail must point at body.content; got {detail}"
+    )

@@ -40,5 +40,9 @@ def test_prompt_instructs_no_op_branch():
 def test_prompt_does_not_embed_secrets_or_tokens():
     prompt = build_auto_sync_prompt("sesn_x", "main")
     # The prompt must reference env-based auth, not embed any literal token.
-    assert "GH_TOKEN" in prompt or "GITHUB_TOKEN" in prompt
+    # Both env var names appear in the auto-sync prompt (see
+    # ``src/mad/core/sessions/use_cases/auto_sync_prompt.py``); pin each
+    # separately rather than collapsing them into a disjunction (rule 2).
+    assert "GH_TOKEN" in prompt
+    assert "GITHUB_TOKEN" in prompt
     assert "ghp_" not in prompt

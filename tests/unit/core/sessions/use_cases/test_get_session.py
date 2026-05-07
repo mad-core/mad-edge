@@ -7,22 +7,7 @@ import pytest
 from mad.core.sessions.domain.entities.session import Session
 from mad.core.sessions.domain.exceptions.base import SessionNotFound
 from mad.core.sessions.use_cases.get_session import GetSessionUseCase
-
-
-class FakeRepo:
-    def __init__(self):
-        self._events: dict[str, list[dict]] = {}
-
-    def append_event(self, session_id, event_type, data=None):
-        event = {"type": event_type, **(data or {})}
-        self._events.setdefault(session_id, []).append(event)
-        return event
-
-    def read_events(self, session_id):
-        return self._events.get(session_id, [])
-
-    def exists(self, session_id):
-        return session_id in self._events
+from support.sessions import FakeSessionRepository as FakeRepo
 
 
 def _make_session(session_id="sesn_abc", status="created"):

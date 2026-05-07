@@ -8,11 +8,133 @@ without touching the real asyncio fanout or filesystem walk.
 from __future__ import annotations
 
 import asyncio
+import datetime
 from collections.abc import AsyncIterator
+from typing import Any
+from uuid import UUID
 
-from mad.core.events.domain.event import Event
+from mad.core.events.domain.event import Event, event_from_persisted
 from mad.core.events.ports.event_bus import EventFilter
 from mad.core.events.ports.event_log_query import EventQuery
+
+_NULL_UUID = UUID("00000000-0000-0000-0000-000000000000")
+_EPOCH = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
+
+
+class FakeEventStore:
+    """In-memory ``EventStore`` double.
+
+    Records every ``append`` call and returns a typed ``Event``. Use
+    cases drive the emitter through this store; tests then assert on
+    ``calls`` (raw tuples) or ``events`` (typed events).
+    """
+
+    def __init__(self, *, raise_on_append: Exception | None = None) -> None:
+        self.calls: list[tuple[str, str, dict | None]] = []
+        self.events: list[Event] = []
+        self._raise = raise_on_append
+
+    def append(
+        self,
+        session_id: str,
+        type: str,
+        data: dict[str, Any] | None = None,
+    ) -> Event:
+        if self._raise is not None:
+            raise self._raise
+        self.calls.append((session_id, type, data))
+        event = Event(
+            event_id=UUID("00000000-0000-0000-0000-000000000001"),
+            session_id=session_id,
+            type=type,
+            data=data or {},
+            timestamp=_EPOCH,
+        )
+        self.events.append(event)
+        return event
+
+
+class RecordingEventBus:
+    """Simple ``EventBus`` double that only records publishes.
+
+    Use this when a test does not need ``subscribe`` (the asyncio-fanout
+    semantics live in ``FakeEventBus``).
+    """
+
+    def __init__(self) -> None:
+        self.published: list[Event] = []
+
+    async def publish(self, event: Event) -> None:
+        self.published.append(event)
+
+    def subscribe(self, event_filter: EventFilter) -> AsyncIterator[Event]:  # pragma: no cover
+        raise NotImplementedError
+
+
+class DualInterfaceEventStore:
+    """``EventStore`` + legacy ``SessionRepository.append_event`` double.
+
+    Several existing use cases still consult ``read_events`` / ``exists``
+    on the session repo while writing through the emitter. This double
+    satisfies both interfaces: it persists raw dicts (so legacy reads
+    work) and returns a typed ``Event`` (so ``EventEmitter.emit`` is
+    happy).
+    """
+
+    def __init__(self) -> None:
+        self.events: list[dict] = []
+
+    def append_event(
+        self, session_id: str, event_type: str, data: dict | None = None
+    ) -> dict:
+        event = {"type": event_type, "session_id": session_id, **(data or {})}
+        self.events.append(event)
+        return event
+
+    def append(
+        self,
+        session_id: str,
+        type: str,
+        data: dict[str, Any] | None = None,
+    ) -> Event:
+        self.append_event(session_id, type, data)
+        return Event(
+            event_id=_NULL_UUID,
+            session_id=session_id,
+            type=type,
+            data=data or {},
+            timestamp=_EPOCH,
+        )
+
+    def read_events(self, session_id: str) -> list[dict]:
+        return [e for e in self.events if e.get("session_id") == session_id]
+
+    def exists(self, session_id: str) -> bool:
+        return any(e.get("session_id") == session_id for e in self.events)
+
+    def list_session_ids(self) -> list[str]:
+        return sorted({e["session_id"] for e in self.events if "session_id" in e})
+
+
+class PersistedEventStore:
+    """``EventStore`` double that returns events through ``event_from_persisted``.
+
+    Used by the delete-session test where the session log already has a
+    canonical ``event_id`` shape.
+    """
+
+    def __init__(self) -> None:
+        self.appended: list[tuple[str, str, dict | None]] = []
+
+    def append(
+        self,
+        session_id: str,
+        type: str,
+        data: dict[str, Any] | None = None,
+    ) -> Event:
+        self.appended.append((session_id, type, data))
+        raw = {"event_id": None, "type": type, "timestamp": "", **(data or {})}
+        return event_from_persisted(raw, session_id)
 
 
 class FakeEventBus:

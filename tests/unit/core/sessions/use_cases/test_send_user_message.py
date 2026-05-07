@@ -7,13 +7,9 @@ via integration tests.
 from __future__ import annotations
 
 import asyncio
-import datetime
-from typing import Any
-from uuid import UUID
 
 import pytest
 
-from mad.core.events.domain.event import Event
 from mad.core.events.emitter import EventEmitter
 from mad.core.sessions.domain.entities.session import Session
 from mad.core.sessions.domain.exceptions.base import SessionNotFound
@@ -23,47 +19,8 @@ from mad.core.sessions.use_cases.send_user_message import (
     _redact_tokens,
 )
 from support.events import FakeEventBus
-
-_EPOCH = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
-_NULL_UUID = UUID("00000000-0000-0000-0000-000000000000")
-
-
-class FakeRepo:
-    """In-memory EventStore double.
-
-    Satisfies both the old ``append_event`` interface (used in assertions)
-    and the new ``EventStore.append`` interface consumed by ``EventEmitter``.
-    """
-
-    def __init__(self):
-        self.events: list[dict] = []
-
-    def append_event(self, session_id: str, event_type: str, data: dict | None = None) -> dict:
-        event = {"type": event_type, **(data or {})}
-        self.events.append(event)
-        return event
-
-    def append(
-        self,
-        session_id: str,
-        type: str,
-        data: dict[str, Any] | None = None,
-    ) -> Event:
-        """EventStore.append — persist and return a typed Event."""
-        raw = self.append_event(session_id, type, data)
-        return Event(
-            event_id=_NULL_UUID,
-            session_id=session_id,
-            type=type,
-            data=data or {},
-            timestamp=_EPOCH,
-        )
-
-    def read_events(self, session_id: str) -> list[dict]:
-        return self.events
-
-    def exists(self, session_id: str) -> bool:
-        return True
+from support.launchers import RecordingLauncher
+from support.sessions import FakeSessionRepository as FakeRepo
 
 
 def _make_session(session_id="sesn_msg", tokens=None):
@@ -146,26 +103,21 @@ async def test_post_run_auto_sync_invokes_second_launcher_run():
     sessions["sesn_msg"].base_branch = "develop"
     bus = FakeEventBus()
 
-    calls: list[str] = []
+    launcher = RecordingLauncher()
 
-    class RecordingLauncher:
-        async def run(self, prompt, workspace, emit):
-            calls.append(prompt)
-            await emit("session.status_idle", {"stop_reason": "end_turn"})
-
-    uc = _make_uc(sessions, lambda name: RecordingLauncher(), repo, bus)
+    uc = _make_uc(sessions, lambda name: launcher, repo, bus)
 
     uc.execute(SendUserMessageInput(session_id="sesn_msg", content="hello"))
     deadline = asyncio.get_event_loop().time() + 2.0
-    while len(calls) < 2 and asyncio.get_event_loop().time() < deadline:
+    while len(launcher.calls) < 2 and asyncio.get_event_loop().time() < deadline:
         await asyncio.sleep(0.05)
 
-    assert len(calls) == 2
-    assert calls[0] == "hello"
-    assert "auto-sync" in calls[1].lower()
-    assert "develop" in calls[1]
-    assert ".claude/settings.local.json" in calls[1]
-    assert ".claude/settings.json" in calls[1]
+    assert len(launcher.calls) == 2
+    assert launcher.calls[0] == "hello"
+    assert "auto-sync" in launcher.calls[1].lower()
+    assert "develop" in launcher.calls[1]
+    assert ".claude/settings.local.json" in launcher.calls[1]
+    assert ".claude/settings.json" in launcher.calls[1]
 
 
 async def test_post_run_auto_sync_runs_even_when_primary_fails():
