@@ -17,9 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mad.core.events.emitter import EventEmitter
+from mad.core.orchestration.domain.exceptions.base import SessionHasInFlightTask
+from mad.core.orchestration.ports.task_queue import TaskQueue
 from mad.core.sessions.domain.entities.session import Session
 from mad.core.sessions.domain.exceptions.base import SessionNotFound
-from mad.core.events.emitter import EventEmitter
 from mad.core.sessions.use_cases.auto_sync_prompt import build_auto_sync_prompt
 
 
@@ -44,15 +46,21 @@ class SendUserMessageUseCase:
         sessions_index: dict[str, Session],
         get_launcher: Callable[[str], Any],
         emitter: EventEmitter,
+        task_queue: TaskQueue | None = None,
     ) -> None:
         self._sessions = sessions_index
         self._get_launcher = get_launcher
         self._emitter = emitter
+        self._task_queue = task_queue
 
     def execute(self, payload: SendUserMessageInput) -> None:
         """Validate and schedule the agent run. Returns immediately."""
         if payload.session_id not in self._sessions:
             raise SessionNotFound(payload.session_id)
+        if self._task_queue is not None:
+            in_flight = self._task_queue.in_flight(payload.session_id)
+            if in_flight is not None:
+                raise SessionHasInFlightTask(payload.session_id, in_flight.task_id)
         session = self._sessions[payload.session_id]
         # Fire-and-forget: emitter handles both persistence and publish.
         asyncio.create_task(

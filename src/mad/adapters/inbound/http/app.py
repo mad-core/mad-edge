@@ -9,6 +9,7 @@ from starlette.requests import Request
 
 from mad.adapters.inbound.http.dependencies import build_dependencies, touch_session
 from mad.adapters.inbound.http.routes.events import router as events_router
+from mad.adapters.inbound.http.routes.orchestration import router as orchestration_router
 from mad.adapters.inbound.http.routes.sessions import router as sessions_router
 from mad.adapters.outbound.agents import factory
 from mad.adapters.outbound.orchestration.projection import InMemoryTaskProjection
@@ -16,6 +17,11 @@ from mad.adapters.outbound.persistence.jsonl_session_repository import ensure_se
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_bus import EventBus
 from mad.core.events.ports.event_log_query import EventLogQuery
+from mad.core.orchestration.domain.exceptions.base import (
+    SessionHasInFlightTask,
+    TaskAlreadyDispatched,
+    TaskNotFound,
+)
 from mad.core.orchestration.use_cases.dispatcher import Dispatcher
 from mad.core.sessions import SessionStore
 from mad.core.sessions.domain.exceptions.base import PathTraversalError, SessionNotFound
@@ -119,6 +125,23 @@ def create_app(
     async def _value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
+    @app.exception_handler(TaskNotFound)
+    async def _task_not_found_handler(request: Request, exc: TaskNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(TaskAlreadyDispatched)
+    async def _task_already_dispatched_handler(
+        request: Request, exc: TaskAlreadyDispatched
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(SessionHasInFlightTask)
+    async def _session_has_in_flight_task_handler(
+        request: Request, exc: SessionHasInFlightTask
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
     app.include_router(sessions_router)
     app.include_router(events_router)
+    app.include_router(orchestration_router)
     return app

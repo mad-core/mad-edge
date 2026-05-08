@@ -28,3 +28,21 @@ class TaskAlreadyDispatched(Exception):
     def __init__(self, task_id: UUID) -> None:
         super().__init__(f"task already dispatched: {task_id}")
         self.task_id = task_id
+
+
+class SessionHasInFlightTask(Exception):
+    """Raised when ``/messages`` is called while a queued task is dispatched.
+
+    Per ADR-0009 Decision 6, ``/messages`` and the orchestration
+    dispatcher are mutually exclusive on a session — at most one of
+    ``(queue dispatch, messages dispatch)`` may be running at a time.
+    The HTTP route maps this to 409 with the prescribed detail message.
+    """
+
+    def __init__(self, session_id: str, task_id: UUID) -> None:
+        super().__init__(
+            f"session {session_id} is running queued task {task_id};"
+            f" wait or cancel via DELETE /tasks/{task_id}"
+        )
+        self.session_id = session_id
+        self.task_id = task_id

@@ -166,6 +166,7 @@ async def send_message(session_id: str, payload: SendMessageRequest, request: Re
         sessions_index=store.sessions,
         get_launcher=request.app.state.launcher_factory,
         emitter=request.app.state.event_emitter,
+        task_queue=request.app.state.task_projection,
     )
     use_case.execute(SendUserMessageInput(session_id=session_id, content=payload.content))
 
