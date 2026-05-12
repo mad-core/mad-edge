@@ -107,6 +107,7 @@ Load-bearing decisions are recorded as ADRs in `docs/adr/` — see `docs/adr/REA
 - `docs/adr/` — Architecture Decision Records; the *why* behind structural choices.
 - `docs/backlog.md` — improvements deferred past v0.1.
 - `docs/sandbox-bwrap.md` — operator's guide for hardening the sandbox with bubblewrap.
+- `docs/cloudflare-tunnel.md` — operator's guide for exposing Mad through a Cloudflare Tunnel with Service-Token-based Cloudflare Access (no project code changes; auth happens at the edge).
 - `pyproject.toml` — package metadata, dependencies, build backend, and the `mad` console script. Single source of truth for `pip install -e .`.
 - `src/mad/adapters/inbound/http/app.py` — `create_app(store=..., session_repo=..., workspace_provisioner=..., launcher_factory=...)` factory and router wiring.
 - `src/mad/adapters/inbound/http/dependencies.py` — composition root; builds production defaults for all outbound dependencies, including `EventEmitter`.
