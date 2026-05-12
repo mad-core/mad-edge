@@ -381,3 +381,83 @@ def test_openapi_declares_include_deleted_query_param(client: TestClient) -> Non
     )
     assert names["include_deleted"]["in"] == "query"
     assert names["include_deleted"]["schema"].get("type") == "boolean"
+
+
+# ---------------------------------------------------------------------------
+# Disk-rehydration parity with GET /v1/sessions (post-server-restart case)
+# ---------------------------------------------------------------------------
+
+
+def test_cleanup_rehydrates_disk_only_session_from_jsonl(
+    client: TestClient, tmp_sessions_dir: Path
+) -> None:
+    """A session that exists only as a JSONL log on disk (the common
+    post-server-restart state) is rehydrated by the cleanup endpoint
+    via SessionRepository — the same source GET /v1/sessions reads
+    from. This is the bug surfaced manually after PR #37 merged: the
+    list endpoint showed dozens of sessions, but cleanup reported
+    examined=1 because it only iterated the in-memory index.
+    """
+    disk_sid = "sesn_disk_only_for_cleanup_test"
+    old_ts = "2025-01-01T00:00:00+00:00"
+    log_path = tmp_sessions_dir / f"{disk_sid}.jsonl"
+    log_path.write_text(
+        json.dumps({"type": "session.created", "session_id": disk_sid, "timestamp": old_ts})
+        + "\n"
+        + json.dumps({"type": "session.status_idle", "session_id": disk_sid, "timestamp": old_ts})
+        + "\n"
+    )
+    assert disk_sid not in client.app.state.store.sessions, (
+        "precondition: the disk-only session must NOT be in the in-memory index"
+    )
+    assert client.app.state.store.sessions == {}, (
+        "precondition: no other sessions in this test — examined and would_delete are pinned"
+    )
+
+    r = client.post(
+        "/v1/sessions/cleanup",
+        json={"older_than": "2025-06-01T00:00:00Z", "dry_run": True},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["would_delete"] == [disk_sid]
+    assert body["deleted_session_ids"] == []
+    assert body["examined"] == 1
+
+
+def test_cleanup_listing_and_cleanup_universes_agree(
+    client: TestClient, tmp_sessions_dir: Path
+) -> None:
+    """Negative twin to the integration above and a regression test for
+    the listing-vs-cleanup mismatch: every session ``GET /v1/sessions``
+    surfaces must appear in ``examined`` (or be a tombstone). Without
+    rehydration the cleanup `examined` count was a strict subset of the
+    listing, which is exactly the operator pain that motivated this fix.
+    """
+    disk_sid = "sesn_disk_only_for_parity_test"
+    old_ts = "2025-01-01T00:00:00+00:00"
+    log_path = tmp_sessions_dir / f"{disk_sid}.jsonl"
+    log_path.write_text(
+        json.dumps({"type": "session.created", "session_id": disk_sid, "timestamp": old_ts})
+        + "\n"
+        + json.dumps({"type": "session.status_idle", "session_id": disk_sid, "timestamp": old_ts})
+        + "\n"
+    )
+
+    listing_ids = {s["session_id"] for s in client.get("/v1/sessions").json()}
+    assert listing_ids == {disk_sid}, (
+        f"precondition: only the disk session is present; got {listing_ids}"
+    )
+
+    r = client.post(
+        "/v1/sessions/cleanup",
+        json={"older_than": "2025-06-01T00:00:00Z", "dry_run": True},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Set parity: every session the (non-tombstone) listing surfaces also
+    # appears in the cleanup universe. This is the regression-guard for
+    # the listing-vs-cleanup mismatch this fix addresses.
+    assert set(body["would_delete"]) == listing_ids
+    assert body["examined"] == len(listing_ids)
+    assert body["deleted_session_ids"] == []

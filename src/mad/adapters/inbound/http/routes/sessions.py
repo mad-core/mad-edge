@@ -286,6 +286,7 @@ async def cleanup_sessions(
     use_case = CleanupSessionsUseCase(
         provisioner=_provisioner(request),
         sessions_index=store.sessions,
+        repo=_repo(request),
         emitter=request.app.state.event_emitter,
     )
     output = await use_case.execute(
