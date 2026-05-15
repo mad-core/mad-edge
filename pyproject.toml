@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "mad-bros"
 version = "0.5.1"
-description = "Multi Agent Develop — self-hosted autonomous Claude sessions against GitHub repos."
+description = "Self-hosted infrastructure that provisions isolated workspaces, clones GitHub repos, and launches external coding agents (Claude Code CLI) — streaming their stdout as agent.output SSE events. Not an orchestrator: no tool-call parsing, no conversation loop."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -13,7 +13,7 @@ authors = [
   { name = "Cristian Moreno", email = "cristianfmoreno95@gmail.com" },
 ]
 requires-python = ">=3.11"
-keywords = ["claude", "agents", "automation", "github"]
+keywords = ["claude", "agents", "automation", "github", "infrastructure", "sse"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Programming Language :: Python :: 3",
