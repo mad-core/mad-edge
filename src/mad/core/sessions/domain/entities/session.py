@@ -11,6 +11,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from mad.core.orchestration.domain.dispatch_policy import (
+    DispatchPolicy,
+    ImmediatePolicy,
+)
+
 
 _SENTINEL = datetime.fromtimestamp(0, tz=UTC)
 
@@ -37,6 +42,8 @@ class Session:
     resources_mounted: list[dict[str, Any]] = field(default_factory=list)
     response: dict[str, Any] = field(default_factory=dict)
     tokens_to_redact: list[str] = field(default_factory=list, repr=False)
+    dispatch_policy: DispatchPolicy = field(default_factory=ImmediatePolicy, repr=False)
+    manual_drain_remaining: int = field(default=0, repr=False)
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = _SENTINEL
 

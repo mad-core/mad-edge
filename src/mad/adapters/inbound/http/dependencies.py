@@ -11,6 +11,7 @@ from __future__ import annotations
 from mad.adapters.outbound.events.in_memory_event_bus import InMemoryEventBus
 from mad.adapters.outbound.events.jsonl_event_log_query import JsonlEventLogQuery
 from mad.adapters.outbound.orchestration.projection import InMemoryTaskProjection
+from mad.adapters.outbound.orchestration.system_clock import SystemClock
 from mad.adapters.outbound.persistence.jsonl_session_repository import (
     JsonlSessionRepository,
 )
@@ -21,6 +22,7 @@ from mad.core.events.domain.event import Event
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_bus import EventBus
 from mad.core.events.ports.event_log_query import EventLogQuery
+from mad.core.orchestration.ports.clock import Clock
 from mad.core.sessions import SessionStore
 from mad.core.sessions.ports.outbound.session_repository import SessionRepository
 from mad.core.sessions.ports.outbound.workspace_provisioner import WorkspaceProvisioner
@@ -34,6 +36,7 @@ def build_dependencies() -> tuple[
     EventLogQuery,
     EventEmitter,
     InMemoryTaskProjection,
+    Clock,
 ]:
     """Return the production defaults for every injected port."""
     store = SessionStore()
@@ -41,6 +44,7 @@ def build_dependencies() -> tuple[
     bus = InMemoryEventBus()
     emitter = EventEmitter(store=repo, bus=bus, on_emit=touch_session(store))
     projection = InMemoryTaskProjection()
+    clock: Clock = SystemClock()
     return (
         store,
         repo,
@@ -49,6 +53,7 @@ def build_dependencies() -> tuple[
         JsonlEventLogQuery(),
         emitter,
         projection,
+        clock,
     )
 
 

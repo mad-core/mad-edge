@@ -45,10 +45,17 @@ from uuid import UUID
 from mad.core.events.domain.event import Event
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_bus import EventBus, EventFilter
+from mad.core.orchestration.domain.dispatch_policy import (
+    can_dispatch,
+    next_window_opening,
+)
 from mad.core.orchestration.domain.task import Task
+from mad.core.orchestration.ports.clock import Clock
 from mad.core.orchestration.ports.task_projection import TaskProjection
 from mad.core.sessions.domain.entities.session import Session
 from mad.core.sessions.use_cases.send_user_message import _run_launcher
+
+_DEFAULT_TICK_INTERVAL_S = 30.0
 
 
 class Dispatcher:
@@ -61,17 +68,26 @@ class Dispatcher:
         bus: EventBus,
         sessions_index: dict[str, Session],
         get_launcher: Callable[[str], Any],
+        clock: Clock | None = None,
+        tick_interval_s: float = _DEFAULT_TICK_INTERVAL_S,
     ) -> None:
         self._projection = projection
         self._emitter = emitter
         self._bus = bus
         self._sessions = sessions_index
         self._get_launcher = get_launcher
+        self._clock = clock
+        self._tick_interval_s = tick_interval_s
 
         self._loop_task: asyncio.Task[None] | None = None
         self._launch_task: asyncio.Task[None] | None = None
+        self._tick_task: asyncio.Task[None] | None = None
         self._in_flight: tuple[str, UUID] | None = None
         self._subscription: AsyncIterator[Event] | None = None
+        # Track tasks that the bus loop has already accounted for via
+        # task.queued_for_window so the periodic tick doesn't re-emit
+        # them every time it sees the queue still has them.
+        self._deferred_tasks: set[UUID] = set()
 
     # -- Lifecycle ---------------------------------------------------------
 
@@ -90,10 +106,12 @@ class Dispatcher:
         await self._recover_orphans()
         self._subscription = self._bus.subscribe(EventFilter())
         self._loop_task = asyncio.create_task(self._loop())
+        if self._clock is not None and self._tick_interval_s > 0:
+            self._tick_task = asyncio.create_task(self._tick_loop())
 
     async def stop(self) -> None:
-        """Cancel the dispatch loop and the in-flight launcher task."""
-        for task in (self._launch_task, self._loop_task):
+        """Cancel the dispatch loop, the tick loop, and the in-flight launcher task."""
+        for task in (self._launch_task, self._loop_task, self._tick_task):
             if task is None:
                 continue
             task.cancel()
@@ -101,6 +119,7 @@ class Dispatcher:
                 await task
         self._loop_task = None
         self._launch_task = None
+        self._tick_task = None
 
     # -- Orphan recovery (ADR-0009 Decision 5) -----------------------------
 
@@ -134,7 +153,40 @@ class Dispatcher:
         async for event in self._subscription:
             self._projection.apply(event)
             if event.type == "task.queued":
+                await self._on_task_queued(event)
+
+    async def _on_task_queued(self, event: Event) -> None:
+        """Handle a freshly enqueued task — dispatch immediately or defer."""
+        session_id = event.session_id
+        if session_id not in self._sessions:
+            return
+        if self._can_dispatch_for_session(session_id):
+            await self._maybe_dispatch_next()
+            return
+        # Policy says no right now — emit task.queued_for_window so the
+        # dashboard surface (issue 3) can show "Mad will run X tasks at
+        # 18:00 tonight." Track the task_id so the periodic tick doesn't
+        # re-emit on every cycle.
+        task_id_str = event.data["task_id"]
+        task_id = UUID(task_id_str)
+        if task_id in self._deferred_tasks:
+            return
+        self._deferred_tasks.add(task_id)
+        scheduled_for = self._next_window_opening_iso(session_id)
+        await self._emitter.emit(
+            session_id,
+            "task.queued_for_window",
+            {"task_id": task_id_str, "scheduled_for": scheduled_for},
+        )
+
+    async def _tick_loop(self) -> None:
+        """Periodic policy evaluation — fires every ``tick_interval_s``."""
+        try:
+            while True:
+                await asyncio.sleep(self._tick_interval_s)
                 await self._maybe_dispatch_next()
+        except asyncio.CancelledError:
+            raise
 
     async def _maybe_dispatch_next(self) -> None:
         """Single-dispatch invariant — start at most one task across all sessions."""
@@ -144,6 +196,15 @@ class Dispatcher:
         if next_task is None:
             return
         self._in_flight = (next_task.session_id, next_task.task_id)
+        # Decrement the manual-drain counter if this dispatch was authorized
+        # by an explicit POST /trigger.
+        session = self._sessions[next_task.session_id]
+        if session.manual_drain_remaining > 0:
+            session.manual_drain_remaining -= 1
+        # The task is leaving the queue — clear it from the deferred set so
+        # if it ever returns to queued state (it can't in v1, but defensive)
+        # the next deferral re-emits cleanly.
+        self._deferred_tasks.discard(next_task.task_id)
         await self._emitter.emit(
             next_task.session_id,
             "task.dispatched",
@@ -153,10 +214,33 @@ class Dispatcher:
 
     def _find_next_dispatchable(self) -> Task | None:
         for session_id in self._sessions:
+            if not self._can_dispatch_for_session(session_id):
+                continue
             queued = self._projection.queued(session_id)
             if queued:
                 return queued[0]
         return None
+
+    def _can_dispatch_for_session(self, session_id: str) -> bool:
+        session = self._sessions[session_id]
+        instant = self._clock.now() if self._clock is not None else None
+        # When no clock is wired, fall back to immediate-only behavior so
+        # legacy test setups (PR #29's _Harness without a clock) keep
+        # working. Production always wires SystemClock.
+        if instant is None:
+            return type(session.dispatch_policy).__name__ == "ImmediatePolicy"
+        return can_dispatch(
+            session.dispatch_policy,
+            instant,
+            manual_drain_remaining=session.manual_drain_remaining,
+        )
+
+    def _next_window_opening_iso(self, session_id: str) -> str | None:
+        session = self._sessions[session_id]
+        if self._clock is None:
+            return None
+        opening = next_window_opening(session.dispatch_policy, self._clock.now())
+        return opening.isoformat() if opening is not None else None
 
     async def _run_task(self, task: Task) -> None:
         """Drive the launcher for one task, then emit task.completed/failed."""

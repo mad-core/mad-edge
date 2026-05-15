@@ -114,6 +114,26 @@ This is hard rule 1 spelled out for this module. If a future feature needs struc
 
 A `Clock` Protocol with `now() -> datetime` is introduced in this module even though v1 has no time-based behavior. Reason: the next issue (dispatch policies — work_window + manual) needs the clock; introducing it now means that issue is purely additive (new `DispatchPolicy` types, new use case input) rather than a constructor-signature retrofit. The v1 production implementation is `SystemClock(): datetime.now(UTC)`. Tests inject a fake clock when scheduling tests land.
 
+### 9. Dispatch policies (amendment, 2026-05-09 — issue #33)
+
+The Clock port from §8 lands its consumers. Three policies on `Session.dispatch_policy`:
+
+- `ImmediatePolicy` — default; existing behavior. Bus path dispatches on `task.queued`; the periodic tick is a no-op for these sessions.
+- `WorkWindowPolicy(windows: list[Window])` — each `Window` is `(start: time, end: time, timezone: ZoneInfo, days: frozenset[Weekday])`. Windows can wrap midnight. Timezones are IANA strings so DST works automatically (rejecting fixed UTC offsets).
+- `ManualPolicy` — queue accumulates indefinitely; the bus path emits `task.queued_for_window` with `scheduled_for=null` instead of dispatching. `POST /v1/sessions/{id}/dispatch_policy/trigger` sets a transient `manual_drain_remaining` counter on the session that decrements per dispatch; when 0, dispatch resumes being a no-op.
+
+**Tick.** The dispatcher gains a 30-second tick alongside its existing bus subscription. The tick walks `sessions_index`, asks `_can_dispatch_for_session(sid)` (which evaluates the policy against `clock.now()`), and calls `_maybe_dispatch_next` if any session has dispatchable queued tasks. The single-dispatch invariant from §4 still holds across both loops.
+
+**`task.queued_for_window`.** Emitted exactly once per task whose `task.queued` arrives outside the dispatchable window (or in `manual` mode without a pending trigger). Carries `{task_id, scheduled_for}` where `scheduled_for` is the next computed window opening as ISO 8601, or `null` for `manual` mode. Used by the dashboard (issue 3) to surface "Mad will run X tasks at 18:00 tonight."
+
+**`dispatch_policy.updated`.** Emitted on every successful PATCH. Replay reconstructs `Session.dispatch_policy` on startup from these events; `manual_drain_remaining` is in-memory only and resets to 0 on restart (a pending drain at the moment of crash is effectively cancelled — operators can re-trigger if needed).
+
+**Tick interval.** 30s is hardcoded in v1. Trade-off: tight enough that overnight cron-style schedules feel responsive, loose enough to avoid CPU burn. Operators can override via `MAD_DISPATCHER_TICK_S` if a real need emerges; not a v1 commitment.
+
+**DST.** The window evaluator localizes `clock.now()` to each window's IANA timezone before comparing HH:MM start/end. Fall-back days (where 02:00 occurs twice) and spring-forward days (where 02:00–03:00 doesn't exist) behave per `zoneinfo` semantics — the tick may briefly fire a window once or skip an hour, but no scheduled work is lost (queue persists; next tick picks it up).
+
+**Trigger semantics.** `POST /trigger` is `manual`-only. It captures the current queue length and sets `manual_drain_remaining` to that count. New tasks enqueued after the trigger but before the drain finishes do NOT join the drain (operator must trigger again). Returns `409 Conflict` in `immediate` / `work_window` modes — the policy already dispatches automatically.
+
 ## Consequences
 
 **Wins:**

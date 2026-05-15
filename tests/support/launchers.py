@@ -38,6 +38,27 @@ class RecordingLauncher:
         await emit("session.status_idle", {"stop_reason": "end_turn"})
 
 
+class RaisingLauncher:
+    """AgentLauncher test double that raises a fixed exception on every
+    ``run`` call. Used by tests that exercise the dispatcher's
+    launcher-failure path (``task.failed`` emission) without needing
+    scripted bus events. Lives here per heuristic 3 so a contract
+    drift on ``AgentLauncher.run`` fails one place, not many.
+    """
+
+    def __init__(self, exc: BaseException) -> None:
+        self._exc = exc
+
+    async def run(
+        self,
+        session_id: str,
+        prompt: str,
+        workspace: Path,
+        emit: Callable[[str, dict | None], Coroutine[Any, Any, None]],
+    ) -> None:
+        raise self._exc
+
+
 class ScriptedLauncher:
     """AgentLauncher test double. Each call to run() consumes the next
     scripted run from the queue and emits its events in order.

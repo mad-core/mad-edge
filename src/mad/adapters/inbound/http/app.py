@@ -17,12 +17,15 @@ from mad.adapters.outbound.persistence.jsonl_session_repository import ensure_se
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_bus import EventBus
 from mad.core.events.ports.event_log_query import EventLogQuery
+from mad.core.orchestration.domain.dispatch_policy import InvalidDispatchPolicy
 from mad.core.orchestration.domain.exceptions.base import (
     SessionHasInFlightTask,
     TaskAlreadyDispatched,
     TaskNotFound,
 )
+from mad.core.orchestration.ports.clock import Clock
 from mad.core.orchestration.use_cases.dispatcher import Dispatcher
+from mad.core.orchestration.use_cases.trigger_manual_dispatch import TriggerNotApplicable
 from mad.core.sessions import SessionStore
 from mad.core.sessions.domain.exceptions.base import PathTraversalError, SessionNotFound
 from mad.core.sessions.ports.outbound.agent_launcher import AgentLauncher
@@ -40,6 +43,8 @@ def create_app(
     event_emitter: EventEmitter | None = None,
     task_projection: InMemoryTaskProjection | None = None,
     dispatcher: Dispatcher | None = None,
+    clock: Clock | None = None,
+    dispatcher_tick_interval_s: float | None = None,
 ) -> FastAPI:
     """Build a FastAPI app with injected dependencies."""
 
@@ -51,6 +56,7 @@ def create_app(
         _default_event_log_query,
         _default_event_emitter,
         _default_projection,
+        _default_clock,
     ) = build_dependencies()
 
     final_store = store if store is not None else _default_store
@@ -66,6 +72,7 @@ def create_app(
         event_log_query if event_log_query is not None else _default_event_log_query
     )
     final_projection = task_projection if task_projection is not None else _default_projection
+    final_clock: Clock = clock if clock is not None else _default_clock
 
     if event_emitter is not None:
         final_event_emitter = event_emitter
@@ -78,17 +85,20 @@ def create_app(
     else:
         final_event_emitter = _default_event_emitter
 
-    final_dispatcher = (
-        dispatcher
-        if dispatcher is not None
-        else Dispatcher(
-            projection=final_projection,
-            emitter=final_event_emitter,
-            bus=final_event_bus,
-            sessions_index=final_store.sessions,
-            get_launcher=final_launcher_factory,
-        )
-    )
+    if dispatcher is not None:
+        final_dispatcher = dispatcher
+    else:
+        dispatcher_kwargs: dict[str, object] = {
+            "projection": final_projection,
+            "emitter": final_event_emitter,
+            "bus": final_event_bus,
+            "sessions_index": final_store.sessions,
+            "get_launcher": final_launcher_factory,
+            "clock": final_clock,
+        }
+        if dispatcher_tick_interval_s is not None:
+            dispatcher_kwargs["tick_interval_s"] = dispatcher_tick_interval_s
+        final_dispatcher = Dispatcher(**dispatcher_kwargs)  # type: ignore[arg-type]
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -112,6 +122,7 @@ def create_app(
     app.state.event_emitter = final_event_emitter
     app.state.task_projection = final_projection
     app.state.dispatcher = final_dispatcher
+    app.state.clock = final_clock
 
     @app.exception_handler(PathTraversalError)
     async def _path_traversal_handler(request: Request, exc: PathTraversalError) -> JSONResponse:
@@ -138,6 +149,22 @@ def create_app(
     @app.exception_handler(SessionHasInFlightTask)
     async def _session_has_in_flight_task_handler(
         request: Request, exc: SessionHasInFlightTask
+    ) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(InvalidDispatchPolicy)
+    async def _invalid_dispatch_policy_handler(
+        request: Request, exc: InvalidDispatchPolicy
+    ) -> JSONResponse:
+        # InvalidDispatchPolicy inherits ValueError but the dispatcher
+        # contract treats it as a bad request body — 422 makes the bug
+        # locatable in the caller's payload, not 400 (which the generic
+        # ValueError handler would otherwise emit).
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    @app.exception_handler(TriggerNotApplicable)
+    async def _trigger_not_applicable_handler(
+        request: Request, exc: TriggerNotApplicable
     ) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
