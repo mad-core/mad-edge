@@ -24,13 +24,16 @@ class RecordingLauncher:
 
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.session_ids: list[str] = []
 
     async def run(
         self,
+        session_id: str,
         prompt: str,
         workspace: Path,
         emit: Callable[[str, dict | None], Coroutine[Any, Any, None]],
     ) -> None:
+        self.session_ids.append(session_id)
         self.calls.append(prompt)
         await emit("session.status_idle", {"stop_reason": "end_turn"})
 
@@ -49,11 +52,12 @@ class ScriptedLauncher:
 
     async def run(
         self,
+        session_id: str,
         prompt: str,
         workspace: Path,
         emit: Callable[[str, dict | None], Coroutine[Any, Any, None]],
     ) -> None:
-        self.calls.append({"prompt": prompt, "workspace": workspace})
+        self.calls.append({"session_id": session_id, "prompt": prompt, "workspace": workspace})
         if self._queue:
             events = self._queue.popleft()
         else:

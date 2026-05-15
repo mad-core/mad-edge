@@ -61,7 +61,7 @@ All day-to-day commands are wrapped in the `Makefile` — run `make help` for th
 ```bash
 make install   # create venv + `pip install -e '.[dev]'`
 make test      # pytest -q
-make serve     # uvicorn mad.adapters.inbound.http.app:create_app --factory (HOST=/PORT= override)
+make serve     # uvicorn mad.adapters.inbound.http.app:create_app --factory (HOST=/PORT= override); also starts a second uvicorn on a UDS for hook ingestion (MAD_HOOK_SOCKET)
 make clean     # drop caches, build artifacts, sessions/
 ```
 
@@ -100,12 +100,14 @@ Load-bearing decisions are recorded as ADRs in `docs/adr/` — see `docs/adr/REA
 - [ADR-0005](docs/adr/0005-uuidv7-event-id.md) — UUIDv7 `event_id` for `Last-Event-ID` catch-up.
 - [ADR-0006](docs/adr/0006-multi-tenancy-deferred.md) — multi-tenancy deferred to a future module.
 - [ADR-0007](docs/adr/0007-single-write-gateway-event-emitter.md) — `EventEmitter` as the single write gateway; `EventStore` port; `CreateSessionUseCase` made async.
+- [ADR-0008](docs/adr/0008-internal-hook-adapter-and-vocabulary.md) — internal inbound adapter on a UDS for claude-cli hook ingestion; `agent.<provider>.hook.*` vocabulary.
 
 ## Key files
 
 - `docs/adr/` — Architecture Decision Records; the *why* behind structural choices.
 - `docs/backlog.md` — improvements deferred past v0.1.
 - `docs/sandbox-bwrap.md` — operator's guide for hardening the sandbox with bubblewrap.
+- `docs/cloudflare-tunnel.md` — operator's guide for exposing Mad through a Cloudflare Tunnel with Service-Token-based Cloudflare Access (no project code changes; auth happens at the edge).
 - `pyproject.toml` — package metadata, dependencies, build backend, and the `mad` console script. Single source of truth for `pip install -e .`.
 - `src/mad/adapters/inbound/http/app.py` — `create_app(store=..., session_repo=..., workspace_provisioner=..., launcher_factory=...)` factory and router wiring.
 - `src/mad/adapters/inbound/http/dependencies.py` — composition root; builds production defaults for all outbound dependencies, including `EventEmitter`.
@@ -117,7 +119,10 @@ Load-bearing decisions are recorded as ADRs in `docs/adr/` — see `docs/adr/REA
 - `src/mad/core/events/ports/event_store.py` — narrow `EventStore` port: `append(session_id, type, data) -> Event`; the only persistence surface `EventEmitter` depends on.
 - `src/mad/core/events/emitter.py` — `EventEmitter` single write gateway; depends on `EventStore` + `EventBus`; every use case calls `emit()` here, never the underlying ports directly (hard rule 11).
 - `src/mad/adapters/outbound/persistence/` — `JsonlSessionRepository` (JSONL file log, hard rule 6) and `LocalWorkspaceProvisioner`.
+- `src/mad/adapters/inbound/internal/` — internal FastAPI app for hook ingestion (`POST /_internal/hooks`, UDS-bound, separate from the public app). Shares the same `EventEmitter` instance so hook events appear in `GET /v1/events/stream` automatically.
 - `src/mad/adapters/outbound/agents/` — production `AgentLauncher` implementations (`claude_cli`) and the by-name `factory.get_launcher` extension point.
+- `src/mad/adapters/outbound/agents/hooks/` — canonical `forward.sh` and `settings.local.json` materialized into every workspace; closed hook list per ADR-0008.
+- `src/mad/adapters/outbound/agents/hook_socket.py` — `default_hook_socket_path()` / `resolve_hook_socket_path()` helpers shared by the launcher and the dual-uvicorn startup.
 - `src/mad/entry_points/cli.py` — uvicorn launcher, `mad` console script entry point.
 - `tests/support/` — test-only doubles (e.g. `ScriptedLauncher`). Never imported from `src/`.
 - `tests/conftest.py` — shared fixtures, including `fake_launcher` (a `ScriptedLauncher`) and `bare_repo`. Unit tests live under `tests/unit/`, integration tests under `tests/integration/`.
@@ -130,13 +135,14 @@ All launcher code implements this interface:
 class AgentLauncher(Protocol):
     async def run(
         self,
+        session_id: str,
         prompt: str,
         workspace: Path,
         emit: Callable[[str, dict | None], Coroutine[Any, Any, None]],
     ) -> None: ...
 ```
 
-The launcher receives the prompt, the workspace path, and an `emit` callback. It spawns the external agent, streams stdout line-by-line as `agent.output` events, and emits `session.status_idle` (exit 0) or `session.error` (non-zero / timeout) on completion. Current production implementation:
-- `claude_cli` — spawns `claude --dangerously-skip-permissions -p "{prompt}"` with `cwd=workspace`. Configurable via `MAD_CLAUDE_CLI_BIN` and `MAD_CLAUDE_CLI_TIMEOUT_S`.
+The launcher receives the session ID, the prompt, the workspace path, and an `emit` callback. It spawns the external agent, streams stdout line-by-line as `agent.output` events, and emits `session.status_idle` (exit 0) or `session.error` (non-zero / timeout) on completion. Current production implementation:
+- `claude_cli` — spawns `claude --dangerously-skip-permissions -p "{prompt}"` with `cwd=workspace`. Configurable via `MAD_CLAUDE_CLI_BIN` and `MAD_CLAUDE_CLI_TIMEOUT_S`. Before spawning, the launcher exports three env vars to the subprocess: `MAD_SESSION_ID` (session attribution for hook payloads), `MAD_HOOK_SOCKET` (UDS path where `forward.sh` posts), and `MAD_PROVIDER` (the provider segment in `agent.<provider>.hook.*` event types).
 
 The protocol lives in `mad.core.ports.outbound.agent_launcher`. The factory `mad.adapters.outbound.agents.factory.get_launcher(provider_name)` dispatches by name and is the extension point for additional providers. Tests inject a `ScriptedLauncher` (from `tests/support/launchers.py`) directly via `create_app(launcher_factory=...)` — no monkey-patching of production modules.

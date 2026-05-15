@@ -9,6 +9,8 @@ from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
+from mad.adapters.outbound.agents.hook_socket import resolve_hook_socket_path
+
 
 class ClaudeCLIError(Exception):
     def __init__(self, exit_code: int, stderr_tail: str) -> None:
@@ -45,6 +47,7 @@ def _subprocess_env() -> dict[str, str]:
 class ClaudeCLIProvider:
     async def run(
         self,
+        session_id: str,
         prompt: str,
         workspace: Path,
         emit: Callable[[str, dict | None], Coroutine[Any, Any, None]],
@@ -59,6 +62,11 @@ class ClaudeCLIProvider:
 
         timeout = float(os.environ.get("MAD_CLAUDE_CLI_TIMEOUT_S", "600"))
 
+        env = _subprocess_env()
+        env["MAD_SESSION_ID"] = session_id
+        env["MAD_HOOK_SOCKET"] = resolve_hook_socket_path()
+        env["MAD_PROVIDER"] = "claude_cli"
+
         proc = await asyncio.create_subprocess_exec(
             executable,
             "--dangerously-skip-permissions",
@@ -67,7 +75,7 @@ class ClaudeCLIProvider:
             cwd=str(workspace),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=_subprocess_env(),
+            env=env,
         )
 
         try:

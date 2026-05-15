@@ -38,6 +38,7 @@ async def _collect_emit(
     launcher: ClaudeCLIProvider,
     prompt: str,
     workspace: Path,
+    session_id: str = "test-session-id",
 ) -> list[dict]:
     """Run the launcher and collect all emitted events into a list."""
     collected: list[dict] = []
@@ -45,7 +46,7 @@ async def _collect_emit(
     async def capture(event_type: str, event: dict) -> None:
         collected.append(event)
 
-    await launcher.run(prompt=prompt, workspace=workspace, emit=capture)
+    await launcher.run(session_id=session_id, prompt=prompt, workspace=workspace, emit=capture)
     return collected
 
 

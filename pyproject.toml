@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mad-bros"
-version = "0.5.0"
+version = "0.5.1"
 description = "Self-hosted infrastructure that provisions isolated workspaces, clones GitHub repos, and launches external coding agents (Claude Code CLI) — streaming their stdout as agent.output SSE events. Not an orchestrator: no tool-call parsing, no conversation loop."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -55,6 +55,10 @@ Issues = "https://github.com/jlsaco/mad/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mad"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/mad/adapters/outbound/agents/hooks/forward.sh" = "mad/adapters/outbound/agents/hooks/forward.sh"
+"src/mad/adapters/outbound/agents/hooks/settings.local.json" = "mad/adapters/outbound/agents/hooks/settings.local.json"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -108,7 +112,7 @@ filterwarnings = [
 target-version = "py311"
 line-length = 100
 src = ["src", "tests"]
-extend-exclude = ["sessions", "venv", ".venv", "build", "dist"]
+extend-exclude = ["sessions", "venv", ".venv", "build", "dist", "tests/.bats-*"]
 
 [tool.ruff.lint]
 select = [

@@ -35,6 +35,7 @@ class ListSessionsInput:
     updated_before: datetime | None = None
     order_by: Literal["created_at", "updated_at"] | None = None
     order: Literal["asc", "desc"] = "asc"
+    include_deleted: bool = False
 
 
 @dataclass
@@ -92,6 +93,8 @@ class ListSessionsUseCase:
 
 
 def _matches(s: SessionSummary, c: ListSessionsInput) -> bool:
+    if not c.include_deleted and s.status == "deleted":
+        return False
     if c.created_after is not None and s.created_at < c.created_after:
         return False
     if c.created_before is not None and s.created_at > c.created_before:

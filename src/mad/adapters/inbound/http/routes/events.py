@@ -14,11 +14,25 @@ Two endpoints, both filterable by ``session_id``, ``kind``, and
   ``Last-Event-ID`` request header: when present, the endpoint first
   replays events from the JSONL log, then transitions to the live
   tail with no gap and no duplicates (ADR-0004 dedup boundary).
+
+The stream emits a transport-level keepalive comment frame
+(``: ping\\n\\n``) whenever no domain event has been published within
+``MAD_SSE_HEARTBEAT_S`` seconds (default 15). The frame carries no
+``id:`` line and is parsed-and-ignored by every conformant SSE client,
+so it never advances ``Last-Event-ID`` catch-up and is never written
+to the JSONL log (issue #34). The response also sets
+``Cache-Control: no-cache, no-transform`` and ``X-Accel-Buffering: no``
+so buffering reverse proxies (Cloudflare Tunnel, nginx default, …)
+flush frames as they arrive instead of stalling the stream.
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
+import os
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -39,6 +53,76 @@ from mad.core.events.use_cases.stream_events import (
 )
 
 router = APIRouter(tags=["events"])
+
+
+_HEARTBEAT_DEFAULT_S = 15.0
+_HEARTBEAT_FRAME = ": ping\n\n"
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+}
+
+
+def _heartbeat_interval() -> float:
+    """Resolve ``MAD_SSE_HEARTBEAT_S`` with a safe default.
+
+    Missing, unparseable, or non-positive values fall back to the
+    default so a misconfiguration cannot silently disable the
+    heartbeat behind a buffering proxy.
+    """
+    raw = os.environ.get("MAD_SSE_HEARTBEAT_S")
+    if raw is None:
+        return _HEARTBEAT_DEFAULT_S
+    try:
+        value = float(raw)
+    except ValueError:
+        return _HEARTBEAT_DEFAULT_S
+    if value <= 0:
+        return _HEARTBEAT_DEFAULT_S
+    return value
+
+
+async def _fetch_next_frame(aiter: AsyncIterator[str]) -> str:
+    """Wrap ``aiter.__anext__()`` so ``asyncio.create_task`` accepts it.
+
+    ``__anext__`` is typed as ``Awaitable[str]`` whereas ``create_task``
+    requires a coroutine — this thin wrapper bridges the contracts
+    without changing semantics (StopAsyncIteration still propagates).
+    """
+    return await aiter.__anext__()
+
+
+async def _with_heartbeat(source: AsyncIterator[str], interval: float) -> AsyncIterator[str]:
+    """Yield from ``source``; inject ``: ping\\n\\n`` when idle.
+
+    Races each ``__anext__`` against ``interval``-second waits. On
+    timeout, yields a comment-frame heartbeat WITHOUT cancelling the
+    pending fetch, so a buffered event is never dropped across
+    heartbeats. On client disconnect the surrounding ``StreamingResponse``
+    cancels this coroutine, the ``finally`` block cancels the pending
+    fetch, and the bus subscription disposes via its own ``aclose``.
+    """
+    aiter = source.__aiter__()
+    pending: asyncio.Task[str] | None = None
+    try:
+        while True:
+            if pending is None:
+                pending = asyncio.create_task(_fetch_next_frame(aiter))
+            done, _ = await asyncio.wait({pending}, timeout=interval)
+            if pending in done:
+                try:
+                    frame = pending.result()
+                except StopAsyncIteration:
+                    return
+                pending = None
+                yield frame
+            else:
+                yield _HEARTBEAT_FRAME
+    finally:
+        if pending is not None and not pending.done():
+            pending.cancel()
+            with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+                await pending
 
 
 def _parse_last_event_id(header: str | None) -> UUID | None:
@@ -121,7 +205,7 @@ async def stream_events(
         last_event_id=parsed_last,
     )
 
-    async def event_generator():
+    async def event_generator() -> AsyncIterator[str]:
         async for event in use_case.execute(payload):
             serialized = _serialize_event(event)
             id_line = (
@@ -129,4 +213,8 @@ async def stream_events(
             )
             yield f"{id_line}data: {json.dumps(serialized)}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        _with_heartbeat(event_generator(), _heartbeat_interval()),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
+    )

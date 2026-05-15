@@ -43,3 +43,5 @@ What else was on the table, and why did we reject it?
 | [ADR-0005](0005-uuidv7-event-id.md) | UUIDv7 `event_id` for Last-Event-ID catch-up | Accepted |
 | [ADR-0006](0006-multi-tenancy-deferred.md) | Multi-tenancy deferred | Accepted |
 | [ADR-0007](0007-single-write-gateway-event-emitter.md) | Single write gateway: EventEmitter | Accepted |
+| [ADR-0009](0009-orchestration-module.md) | Orchestration module: scope, vocabulary, and persistence | Accepted |
+| [ADR-0008](0008-internal-hook-adapter-and-vocabulary.md) | Internal inbound adapter + `agent.<provider>.hook.*` vocabulary | Accepted |

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from mad.adapters.outbound.events.in_memory_event_bus import InMemoryEventBus
 from mad.adapters.outbound.events.jsonl_event_log_query import JsonlEventLogQuery
+from mad.adapters.outbound.orchestration.projection import InMemoryTaskProjection
 from mad.adapters.outbound.persistence.jsonl_session_repository import (
     JsonlSessionRepository,
 )
@@ -32,12 +33,14 @@ def build_dependencies() -> tuple[
     EventBus,
     EventLogQuery,
     EventEmitter,
+    InMemoryTaskProjection,
 ]:
     """Return the production defaults for every injected port."""
     store = SessionStore()
     repo = JsonlSessionRepository()
     bus = InMemoryEventBus()
     emitter = EventEmitter(store=repo, bus=bus, on_emit=touch_session(store))
+    projection = InMemoryTaskProjection()
     return (
         store,
         repo,
@@ -45,6 +48,7 @@ def build_dependencies() -> tuple[
         bus,
         JsonlEventLogQuery(),
         emitter,
+        projection,
     )
 
 

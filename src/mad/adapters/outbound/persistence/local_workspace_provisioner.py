@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
+from importlib import resources
 from pathlib import Path
 
 
@@ -70,6 +72,46 @@ class LocalWorkspaceProvisioner:
             )
             if result.returncode != 0:
                 raise ValueError(f"unknown base_branch {base_branch!r} for repository")
+
+        self._install_claude_hooks(local_path)
+
+    def _install_claude_hooks(self, local_path: Path) -> None:
+        """Materialize Claude Code hook artifacts inside the cloned repo.
+
+        Creates .claude/hooks/forward.sh and .claude/settings.local.json
+        from package resources, then registers them in .git/info/exclude so
+        they are never committed upstream.
+        """
+        hooks_dir = local_path / ".claude" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+
+        pkg = resources.files("mad.adapters.outbound.agents.hooks")
+
+        forward_sh_src = pkg.joinpath("forward.sh").read_bytes()
+        forward_sh_dest = hooks_dir / "forward.sh"
+        forward_sh_dest.write_bytes(forward_sh_src)
+        os.chmod(forward_sh_dest, 0o755)  # noqa: S103 — claude-cli must execute the script
+
+        settings_src = pkg.joinpath("settings.local.json").read_text(encoding="utf-8")
+        settings_dest = local_path / ".claude" / "settings.local.json"
+        settings_dest.write_text(settings_src, encoding="utf-8")
+
+        git_dir = local_path / ".git"
+        if not git_dir.exists():
+            return
+
+        exclude_file = git_dir / "info" / "exclude"
+        exclude_file.parent.mkdir(parents=True, exist_ok=True)
+
+        existing = exclude_file.read_text(encoding="utf-8") if exclude_file.exists() else ""
+        lines_to_add = [".claude/hooks/", ".claude/settings.local.json"]
+        additions = [line for line in lines_to_add if line not in existing.splitlines()]
+        if additions:
+            with exclude_file.open("a", encoding="utf-8") as f:
+                if existing and not existing.endswith("\n"):
+                    f.write("\n")
+                for line in additions:
+                    f.write(line + "\n")
 
     def materialize_file(
         self,

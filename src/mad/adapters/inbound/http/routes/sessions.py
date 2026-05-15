@@ -14,10 +14,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Header, Query, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from mad.core.sessions import SessionStore
+from mad.core.sessions.use_cases.cleanup_sessions import (
+    CleanupSessionsInput,
+    CleanupSessionsUseCase,
+)
 from mad.core.sessions.use_cases.create_session import (
     CreateSessionInput,
     CreateSessionUseCase,
@@ -84,6 +88,30 @@ class SessionDetailResponse(BaseModel):
     events: list[dict[str, Any]]
     created_at: datetime
     updated_at: datetime
+
+
+class CleanupSessionsRequest(BaseModel):
+    older_than: datetime = Field(
+        ...,
+        description=(
+            "Tz-aware ISO 8601 datetime. Sessions whose updated_at is strictly less "
+            "than this value (and whose status is not already 'deleted') are eligible "
+            "for cleanup. Future values return 400."
+        ),
+    )
+    dry_run: bool = Field(
+        default=False,
+        description=(
+            "When true, the response reports the would-be-deleted ids in `would_delete` "
+            "without destroying workspaces or emitting session.deleted events."
+        ),
+    )
+
+
+class CleanupSessionsResponse(BaseModel):
+    deleted_session_ids: list[str] = Field(default_factory=list)
+    would_delete: list[str] = Field(default_factory=list)
+    examined: int = 0
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -166,6 +194,7 @@ async def send_message(session_id: str, payload: SendMessageRequest, request: Re
         sessions_index=store.sessions,
         get_launcher=request.app.state.launcher_factory,
         emitter=request.app.state.event_emitter,
+        task_queue=request.app.state.task_projection,
     )
     use_case.execute(SendUserMessageInput(session_id=session_id, content=payload.content))
 
@@ -201,6 +230,7 @@ async def list_sessions(
     updated_before: Annotated[datetime | None, Query()] = None,
     order_by: Annotated[Literal["created_at", "updated_at"] | None, Query()] = None,
     order: Annotated[Literal["asc", "desc"], Query()] = "asc",
+    include_deleted: Annotated[bool, Query()] = False,
 ) -> list[SessionSummaryResponse]:
     store = _store(request)
 
@@ -216,6 +246,7 @@ async def list_sessions(
             updated_before=_as_utc(updated_before),
             order_by=order_by,
             order=order,
+            include_deleted=include_deleted,
         )
     )
     return [
@@ -240,3 +271,29 @@ async def delete_session(session_id: str, request: Request) -> dict:
     )
     output = await use_case.execute(session_id)
     return {"status": output.status, "session_id": output.session_id}
+
+
+@router.post("/v1/sessions/cleanup", response_model=CleanupSessionsResponse)
+async def cleanup_sessions(
+    payload: CleanupSessionsRequest, request: Request
+) -> CleanupSessionsResponse:
+    cutoff = _as_utc(payload.older_than)
+    assert cutoff is not None  # mandatory field; Pydantic guards None
+    if cutoff > datetime.now(UTC):
+        raise HTTPException(status_code=400, detail="older_than is not valid")
+
+    store = _store(request)
+    use_case = CleanupSessionsUseCase(
+        provisioner=_provisioner(request),
+        sessions_index=store.sessions,
+        repo=_repo(request),
+        emitter=request.app.state.event_emitter,
+    )
+    output = await use_case.execute(
+        CleanupSessionsInput(older_than=cutoff, dry_run=payload.dry_run)
+    )
+    return CleanupSessionsResponse(
+        deleted_session_ids=output.deleted_session_ids,
+        would_delete=output.would_delete,
+        examined=output.examined,
+    )

@@ -17,9 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from mad.core.events.emitter import EventEmitter
+from mad.core.orchestration.domain.exceptions.base import SessionHasInFlightTask
+from mad.core.orchestration.ports.task_queue import TaskQueue
 from mad.core.sessions.domain.entities.session import Session
 from mad.core.sessions.domain.exceptions.base import SessionNotFound
-from mad.core.events.emitter import EventEmitter
 from mad.core.sessions.use_cases.auto_sync_prompt import build_auto_sync_prompt
 
 
@@ -44,15 +46,21 @@ class SendUserMessageUseCase:
         sessions_index: dict[str, Session],
         get_launcher: Callable[[str], Any],
         emitter: EventEmitter,
+        task_queue: TaskQueue | None = None,
     ) -> None:
         self._sessions = sessions_index
         self._get_launcher = get_launcher
         self._emitter = emitter
+        self._task_queue = task_queue
 
     def execute(self, payload: SendUserMessageInput) -> None:
         """Validate and schedule the agent run. Returns immediately."""
         if payload.session_id not in self._sessions:
             raise SessionNotFound(payload.session_id)
+        if self._task_queue is not None:
+            in_flight = self._task_queue.in_flight(payload.session_id)
+            if in_flight is not None:
+                raise SessionHasInFlightTask(payload.session_id, in_flight.task_id)
         session = self._sessions[payload.session_id]
         # Fire-and-forget: emitter handles both persistence and publish.
         asyncio.create_task(
@@ -77,8 +85,17 @@ async def _run_launcher(
     prompt: str,
     get_launcher: Callable[[str], Any],
     emitter: EventEmitter,
+    propagate_failures: bool = False,
 ) -> None:
-    """Internal coroutine: run the launcher and handle lifecycle events."""
+    """Internal coroutine: run the launcher and handle lifecycle events.
+
+    When ``propagate_failures`` is False (the default, used by
+    /messages' fire-and-forget path), launcher exceptions are
+    converted to ``session.error`` events and the coroutine returns
+    cleanly. When True, after the ``session.error`` is emitted the
+    exception is re-raised so a caller (e.g. the orchestration
+    Dispatcher) can map the failure to ``task.failed``.
+    """
     await emitter.emit(session_id, "session.status_running")
     session.mark_running()
 
@@ -99,12 +116,14 @@ async def _run_launcher(
         elif event_type == "session.error":
             session.mark_error()
 
+    primary_failure: Exception | None = None
     try:
-        await launcher.run(prompt=prompt, workspace=workspace, emit=emit)
+        await launcher.run(session_id=session_id, prompt=prompt, workspace=workspace, emit=emit)
     except Exception as exc:
         if session.status == "running":
             await emitter.emit(session_id, "session.error", {"error": str(exc)})
             session.mark_error()
+        primary_failure = exc
 
     # Post-run auto-sync (issue #8): always launch a second agent run in
     # the same workspace with a fixed instruction prompt that decides
@@ -112,14 +131,21 @@ async def _run_launcher(
     # interpret the run's output (hard rule 1); events are emitted as
     # agent.output like any other run. Failures here MUST NOT crash the
     # session task — they are surfaced as a session.error event.
+    auto_sync_failure: Exception | None = None
     try:
         auto_sync_prompt = build_auto_sync_prompt(session_id, session.base_branch)
-        await launcher.run(prompt=auto_sync_prompt, workspace=workspace, emit=emit)
+        await launcher.run(session_id=session_id, prompt=auto_sync_prompt, workspace=workspace, emit=emit)
     except Exception as exc:
         await emitter.emit(
             session_id, "session.error", {"error": f"auto-sync failed: {exc}"}
         )
         session.mark_error()
+        auto_sync_failure = exc
+
+    if propagate_failures and primary_failure is not None:
+        raise primary_failure
+    if propagate_failures and auto_sync_failure is not None:
+        raise auto_sync_failure
 
 
 def _collect_tokens(session: Session) -> list[str]:
