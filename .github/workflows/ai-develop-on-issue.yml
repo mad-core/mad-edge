@@ -133,7 +133,28 @@ jobs:
           claude_args: |
             --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
 
+      # If claude-code-action already committed AND published a PR on its own, it
+      # leaves nothing for us to do: the working tree is clean and HEAD is not
+      # ahead of the remote branch. In that case the commit/push/PR steps below
+      # are skipped entirely, so we never create a duplicate or empty PR.
+      - name: Detect pending changes
+        id: pending
+        run: |
+          set -euo pipefail
+          pending=false
+          if [ -n "$(git status --porcelain)" ]; then
+            pending=true
+          elif git rev-parse --verify --quiet "origin/$BRANCH" >/dev/null \
+            && [ "$(git rev-list --count "origin/$BRANCH..HEAD")" != "0" ]; then
+            pending=true
+          fi
+          echo "pending=$pending" >> "$GITHUB_OUTPUT"
+          if [ "$pending" != "true" ]; then
+            echo "::notice::No pending changes (Claude left nothing to publish) — skipping commit, push and PR."
+          fi
+
       - name: Commit any uncommitted changes
+        if: steps.pending.outputs.pending == 'true'
         run: |
           set -euo pipefail
           if [ -n "$(git status --porcelain)" ]; then
@@ -142,9 +163,11 @@ jobs:
           fi
 
       - name: Push commits
+        if: steps.pending.outputs.pending == 'true'
         run: git push origin "HEAD:$BRANCH"
 
       - name: Open or update PR (non-draft) toward main
+        if: steps.pending.outputs.pending == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
