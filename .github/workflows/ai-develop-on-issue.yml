@@ -1,0 +1,163 @@
+name: AI Develop on Issue
+
+# Start Claude-driven development on an issue's associated branch, but ONLY when
+# both gates pass:
+#   1. Author gate — the issue author is listed in the `AI_DEVELOP_ALLOWLIST`
+#      repository variable (comma- or space-separated logins, e.g. "cimode jlsaco").
+#   2. Label gate — the issue carries the `ai:auto-develop` label.
+# Either gate failing makes the run a no-op (skipped), so arbitrary contributors
+# or unlabeled issues never trigger automated execution.
+#
+# Operator setup (GitHub-side, not committed — see docs/ai-develop-on-issue.md):
+#   - Secret   CLAUDE_CODE_OAUTH_TOKEN  ← output of `claude setup-token`
+#   - Variable AI_DEVELOP_ALLOWLIST     ← e.g. "cimode jlsaco"
+#   - Label    ai:auto-develop
+#
+# Token hygiene (CLAUDE.md hard rule 2): the OAuth token is referenced only as a
+# secret expression and is never echoed to logs or written to the workspace.
+
+on:
+  issues:
+    types: [labeled, opened]
+
+# At most one run per issue. Re-applying the label cancels any in-flight run
+# instead of duplicating the work.
+concurrency:
+  group: ai-develop-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Gate (author + label)
+    runs-on: ubuntu-latest
+    # Cheap label gate first: if the label is absent the whole job is skipped,
+    # `eligible` is never set, and the dependent `develop` job is skipped too.
+    if: contains(github.event.issue.labels.*.name, 'ai:auto-develop')
+    outputs:
+      eligible: ${{ steps.gate.outputs.eligible }}
+      branch: ${{ steps.gate.outputs.branch }}
+    steps:
+      - name: Verify author is in AI_DEVELOP_ALLOWLIST and resolve branch name
+        id: gate
+        env:
+          AUTHOR: ${{ github.event.issue.user.login }}
+          ALLOWLIST: ${{ vars.AI_DEVELOP_ALLOWLIST }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          LABELS: ${{ join(github.event.issue.labels.*.name, ' ') }}
+        run: |
+          set -euo pipefail
+
+          # Author gate: match whole tokens, treating comma/newline as space.
+          eligible=false
+          normalized="${ALLOWLIST//,/ }"
+          for u in $normalized; do
+            if [ "$u" = "$AUTHOR" ]; then
+              eligible=true
+              break
+            fi
+          done
+          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
+          if [ "$eligible" != "true" ]; then
+            echo "::notice::Author '$AUTHOR' is not in AI_DEVELOP_ALLOWLIST — skipping."
+            exit 0
+          fi
+
+          # Branch name per the /work convention: <type>/<issue-number>-<slug>.
+          # <type> comes from the `type: X` label; default to feat.
+          type="feat"
+          case " $LABELS " in
+            *" type: bug "*) type="bug" ;;
+            *" type: feat "*) type="feat" ;;
+            *" type: refactor "*) type="refactor" ;;
+            *" type: ci "*) type="ci" ;;
+            *" type: chore "*) type="chore" ;;
+          esac
+
+          # Slug: drop any leading `type(scope):` prefix, lowercase, non-alnum -> '-',
+          # trim leading/trailing '-', cap at 50 chars, trim again.
+          slug=$(printf '%s' "$ISSUE_TITLE" \
+            | sed -E 's/^[a-z]+(\([^)]*\))?:[[:space:]]*//I' \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' \
+            | cut -c1-50 \
+            | sed -E 's/-+$//')
+          branch="${type}/${ISSUE_NUMBER}-${slug}"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "::notice::Resolved branch '$branch' for issue #$ISSUE_NUMBER."
+
+  develop:
+    name: Claude develop on issue branch
+    needs: gate
+    if: needs.gate.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    env:
+      BRANCH: ${{ needs.gate.outputs.branch }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Resolve issue branch (reuse if present, else create)
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$BRANCH"
+            git checkout "$BRANCH"
+          else
+            git checkout -b "$BRANCH"
+            git push -u origin "$BRANCH"
+          fi
+
+      - name: Run Claude Code on the issue
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Work GitHub issue #${{ github.event.issue.number }} in this repository,
+            following the project's /work pipeline and every hard rule in CLAUDE.md.
+            Branch ${{ needs.gate.outputs.branch }} is already checked out — make and
+            commit your changes there. Do not open the PR yourself; a later workflow
+            step handles the push and PR.
+          claude_args: |
+            --allowedTools "Bash,Edit,Write,Read,Glob,Grep"
+
+      - name: Commit any uncommitted changes
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "chore: AI-generated work for #${ISSUE_NUMBER}"
+          fi
+
+      - name: Push commits
+        run: git push origin "HEAD:$BRANCH"
+
+      - name: Open or update PR (non-draft) toward main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          set -euo pipefail
+          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            echo "::notice::PR for '$BRANCH' already exists — updated by the latest push."
+          else
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "$ISSUE_TITLE" \
+              --body "Automated development for #${ISSUE_NUMBER}.
+
+          Closes #${ISSUE_NUMBER}."
+          fi
