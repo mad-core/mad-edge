@@ -40,9 +40,14 @@ from mad.adapters.inbound.http.routes.orchestration import (
     DispatchPolicyResponse,
     EnqueueTaskRequest,
     EnqueueTaskResponse,
+    GlobalQueueResponse,
     ListTasksResponse,
+    SessionPriorityResponse,
     TaskResponse,
     TriggerManualDispatchResponse,
+    UpdatePriorityRequest,
+    _queue_task_entry,
+    _scheduled_task_entry,
 )
 from mad.adapters.inbound.http.routes.sessions import (
     CleanupSessionsRequest,
@@ -58,6 +63,7 @@ from mad.core.events.ports.event_log_query import EventLogQuery
 from mad.core.events.use_cases.query_events import QueryEventsInput, QueryEventsUseCase
 from mad.core.orchestration.domain.deployment_policy import DeploymentDispatchPolicy
 from mad.core.orchestration.domain.dispatch_policy import policy_from_dict, policy_to_dict
+from mad.core.orchestration.ports.clock import Clock
 from mad.core.orchestration.use_cases.cancel_task import CancelTaskInput, CancelTaskUseCase
 from mad.core.orchestration.use_cases.clear_dispatch_policy import (
     ClearDispatchPolicyInput,
@@ -69,6 +75,7 @@ from mad.core.orchestration.use_cases.deployment_dispatch_policy import (
     SetDeploymentDispatchPolicyUseCase,
 )
 from mad.core.orchestration.use_cases.enqueue_task import EnqueueTaskInput, EnqueueTaskUseCase
+from mad.core.orchestration.use_cases.get_global_queue import GetGlobalQueueUseCase
 from mad.core.orchestration.use_cases.list_tasks import ListTasksUseCase
 from mad.core.orchestration.use_cases.trigger_manual_dispatch import (
     TriggerManualDispatchInput,
@@ -77,6 +84,10 @@ from mad.core.orchestration.use_cases.trigger_manual_dispatch import (
 from mad.core.orchestration.use_cases.update_dispatch_policy import (
     UpdateDispatchPolicyInput,
     UpdateDispatchPolicyUseCase,
+)
+from mad.core.orchestration.use_cases.update_dispatch_priority import (
+    UpdateDispatchPriorityInput,
+    UpdateDispatchPriorityUseCase,
 )
 from mad.core.sessions import SessionStore
 from mad.core.sessions.ports.outbound.agent_launcher import AgentLauncher
@@ -139,6 +150,7 @@ def build_mcp_server(
     task_projection: object,
     deployment_policy: DeploymentDispatchPolicy,
     event_log_query: EventLogQuery,
+    clock: Clock,
 ) -> FastMCP:
     """Build the FastMCP server bound to the supplied in-process dependencies.
 
@@ -463,6 +475,45 @@ def build_mcp_server(
         )
         output = await use_case.execute(SetDeploymentDispatchPolicyInput(policy=policy))
         return DeploymentDispatchPolicyResponse(policy=policy_to_dict(output.policy))
+
+    # -- Orchestration: priority + global queue (issue #46) -------------------
+
+    @mcp.tool(
+        name="mad_set_session_priority",
+        description="Set a session's cross-session dispatch priority "
+        "([1, 10], higher dispatches first; ties break on the head task's "
+        "arrival time). Mirrors PATCH /v1/sessions/{id}/priority.",
+    )
+    async def mad_set_session_priority(
+        session_id: str, payload: UpdatePriorityRequest
+    ) -> SessionPriorityResponse:
+        use_case = UpdateDispatchPriorityUseCase(
+            sessions_index=store.sessions, emitter=event_emitter
+        )
+        output = await use_case.execute(
+            UpdateDispatchPriorityInput(session_id=session_id, priority=payload.priority)
+        )
+        return SessionPriorityResponse(session_id=output.session_id, priority=output.priority)
+
+    @mcp.tool(
+        name="mad_get_queue",
+        description="Global queue view across all sessions: in_flight / ready / "
+        "scheduled, policy-aware and in true dispatch order (ready[0] is what "
+        "dispatches next). Mirrors GET /v1/queue.",
+    )
+    def mad_get_queue() -> GlobalQueueResponse:
+        use_case = GetGlobalQueueUseCase(
+            sessions_index=store.sessions,
+            task_queue=task_projection,
+            clock=clock,
+            deployment=deployment_policy,
+        )
+        output = use_case.execute()
+        return GlobalQueueResponse(
+            in_flight=_queue_task_entry(output.in_flight) if output.in_flight else None,
+            ready=[_queue_task_entry(e) for e in output.ready],
+            scheduled=[_scheduled_task_entry(e) for e in output.scheduled],
+        )
 
     # -- Events: historical query (issue #32) ---------------------------------
 

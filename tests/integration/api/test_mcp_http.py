@@ -272,6 +272,8 @@ async def test_tool_surface_is_the_full_request_response_route_set(client: TestC
             "mad_trigger_dispatch",
             "mad_get_deployment_dispatch_policy",
             "mad_set_deployment_dispatch_policy",
+            "mad_set_session_priority",
+            "mad_get_queue",
             "mad_query_events",
         ]
     )
@@ -649,6 +651,103 @@ async def test_set_deployment_dispatch_policy_empty_windows_errors(client: TestC
     assert result.isError is True
     # Pin the cause: the zero-windows validation, not an unrelated failure.
     assert "windows" in result.content[0].text  # type: ignore[union-attr]
+
+
+# --- tool: mad_set_session_priority -------------------------------------------
+
+
+async def test_set_session_priority_round_trips(client: TestClient) -> None:
+    async with _mcp_session(client) as s:
+        session_id = await _make_session(s)
+        body = _dict_result(
+            await s.call_tool(
+                "mad_set_session_priority",
+                {"session_id": session_id, "payload": {"priority": 8}},
+            )
+        )
+    assert body == {"session_id": session_id, "priority": 8}
+
+
+async def test_set_session_priority_out_of_range_errors(client: TestClient) -> None:
+    """Negative twin: 11 is outside [1, 10] and is rejected, never clamped
+    (the HTTP route returns 422 for the same payload)."""
+    async with _mcp_session(client) as s:
+        session_id = await _make_session(s)
+        result = await s.call_tool(
+            "mad_set_session_priority",
+            {"session_id": session_id, "payload": {"priority": 11}},
+        )
+    assert result.isError is True
+    # Pin the cause: the priority bound validation, not an unrelated failure.
+    assert "priority" in result.content[0].text  # type: ignore[union-attr]
+
+
+async def test_set_session_priority_unknown_session_errors(client: TestClient) -> None:
+    async with _mcp_session(client) as s:
+        result = await s.call_tool(
+            "mad_set_session_priority",
+            {"session_id": "sesn_missing", "payload": {"priority": 5}},
+        )
+    assert result.isError is True
+    assert "sesn_missing" in result.content[0].text  # type: ignore[union-attr]
+
+
+# --- tool: mad_get_queue -------------------------------------------------------
+
+
+async def test_get_queue_orders_ready_by_priority_desc(client: TestClient) -> None:
+    """The queue tool surfaces true dispatch order: the priority-8 session's
+    task leads the priority-1 session's task even though its session was
+    created later (same ordering function the dispatcher uses)."""
+    async with _mcp_session(client) as s:
+        low_id = await _make_session(s)
+        high_id = await _make_session(s)
+        await s.call_tool(
+            "mad_set_session_priority",
+            {"session_id": high_id, "payload": {"priority": 8}},
+        )
+        low_task = _inject_queued(client, low_id, content="low")
+        high_task = _inject_queued(client, high_id, content="high")
+        body = _dict_result(await s.call_tool("mad_get_queue", {}))
+    assert body["in_flight"] is None
+    assert [e["task_id"] for e in body["ready"]] == [
+        str(high_task.task_id),
+        str(low_task.task_id),
+    ]
+    assert body["ready"][0]["priority"] == 8
+    assert body["ready"][1]["priority"] == 1
+    assert body["scheduled"] == []
+
+
+async def test_get_queue_pending_unknown_session_errors(client: TestClient) -> None:
+    """Negative twin: a queued task whose session is missing from the live
+    index is an invariant violation — the tool fails loud (hard rule 7),
+    never rendering a queue that silently omits work."""
+    _inject_queued(client, "sesn_ghost", content="orphan")
+    async with _mcp_session(client) as s:
+        result = await s.call_tool("mad_get_queue", {})
+    assert result.isError is True
+    assert "sesn_ghost" in result.content[0].text  # type: ignore[union-attr]
+
+
+async def test_get_queue_schedules_session_inheriting_manual_deployment_default(
+    client: TestClient,
+) -> None:
+    """Effective-policy resolution (issue #45) in the queue tool: a session
+    with NO per-session override inherits the manual deployment default, so
+    its task is scheduled with the manual reason — exactly how the
+    dispatcher would gate it. Twin of the ready-path test above."""
+    async with _mcp_session(client) as s:
+        await s.call_tool(
+            "mad_set_deployment_dispatch_policy",
+            {"payload": {"kind": "manual"}},
+        )
+        session_id = await _make_session(s)
+        task = _inject_queued(client, session_id, content="gated")
+        body = _dict_result(await s.call_tool("mad_get_queue", {}))
+    assert body["ready"] == []
+    assert [e["task_id"] for e in body["scheduled"]] == [str(task.task_id)]
+    assert body["scheduled"][0]["reason"] == {"kind": "manual", "scheduled_for": None}
 
 
 # --- tool: mad_query_events --------------------------------------------------

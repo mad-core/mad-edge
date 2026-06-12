@@ -42,6 +42,8 @@ _ROUTE_TO_TOOL: dict[tuple[str, str], str] = {
     ("POST", "/v1/sessions/{session_id}/dispatch_policy/trigger"): "mad_trigger_dispatch",
     ("GET", "/v1/dispatch_policy"): "mad_get_deployment_dispatch_policy",
     ("PUT", "/v1/dispatch_policy"): "mad_set_deployment_dispatch_policy",
+    ("PATCH", "/v1/sessions/{session_id}/priority"): "mad_set_session_priority",
+    ("GET", "/v1/queue"): "mad_get_queue",
     ("GET", "/v1/events"): "mad_query_events",
 }
 

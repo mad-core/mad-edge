@@ -131,6 +131,7 @@ def create_app(
         task_projection=final_projection,
         deployment_policy=final_deployment_policy,
         event_log_query=final_event_log_query,
+        clock=final_clock,
     )
     mcp_asgi_app = mcp_server.streamable_http_app()
 
