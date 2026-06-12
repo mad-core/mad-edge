@@ -1,0 +1,193 @@
+name: TestPyPI preview
+
+# Publishes a pre-release (PEP 440 `.dev` version) of mad-bros to TestPyPI for
+# every PR against `main`, so the *exact built artifact* can be installed with
+# pip before it ever reaches the real index.
+#
+# Why a published round-trip and not just `pip install -e .`:
+# the #50 packaging bug only manifested in the BUILT sdist/wheel — installing
+# from an editable checkout or `git+https://…@branch` rebuilds from the source
+# tree and silently masks it. The only faithful check is build → publish →
+# install-from-index → import. This workflow is that check.
+#
+# ── One-time setup (until done, only `build` runs and it is always green) ──
+#   1. Create an account on https://test.pypi.org.
+#   2. Register a Trusted Publisher (a "pending publisher") for project
+#      `mad-bros` at https://test.pypi.org/manage/account/publishing/ with:
+#        Owner: jlsaco   Repository: mad
+#        Workflow name: testpypi-preview.yml   Environment: testpypi
+#   3. Create a GitHub Environment named `testpypi`
+#      (repo Settings → Environments → New environment).
+#   4. Set the repository variable TESTPYPI_ENABLED=true
+#      (Settings → Secrets and variables → Actions → Variables).
+#      Flip it to anything else to disable publishing without deleting the file.
+# See docs/testpypi-preview.md for the full operator guide.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # One in-flight preview per PR; a new push cancels the previous build so we
+  # don't waste a TestPyPI version number on a superseded commit.
+  group: testpypi-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build preview (dev version)
+    # Trusted Publishing mints the publish token from the repo's own OIDC
+    # identity, which fork PRs never receive — and we would never want to hand
+    # publish rights to fork-authored code anyway. Skip the whole preview for
+    # forks; same-repo branches and manual runs proceed.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Derive a unique PEP 440 dev version
+        id: version
+        # `<base>.dev<run_id>`: run_id is globally unique and monotonic, so
+        # re-runs and concurrent PRs never collide on TestPyPI's immutable
+        # version namespace. The edit is ephemeral (never committed).
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, pathlib, re
+
+          run_id = os.environ["GITHUB_RUN_ID"]
+          pp = pathlib.Path("pyproject.toml")
+          text = pp.read_text()
+          base = re.search(r'^version = "([^"]+)"', text, re.M).group(1)
+          dev = f"{base}.dev{run_id}"
+          pp.write_text(
+              re.sub(r'^version = "[^"]+"', f'version = "{dev}"', text, count=1, flags=re.M)
+          )
+
+          init = pathlib.Path("src/mad/__init__.py")
+          init.write_text(
+              re.sub(r'__version__ = "[^"]+"', f'__version__ = "{dev}"', init.read_text(), count=1)
+          )
+
+          print(f"version={dev}")
+          PY
+
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: testpypi-dist
+          path: dist/
+
+  publish:
+    name: Publish to TestPyPI
+    needs: build
+    # Gated on the operator opt-in variable so this PR (and any PR opened before
+    # the TestPyPI publisher is configured) stays green: no variable → no
+    # publish attempt, just the build above.
+    if: vars.TESTPYPI_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/mad-bros
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: testpypi-dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  verify:
+    name: Verify pip install from TestPyPI
+    needs: [build, publish]
+    if: vars.TESTPYPI_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the published preview in a clean venv and import it
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        # Deps resolve from real PyPI (TestPyPI does not mirror fastapi/anthropic
+        # /mcp); only mad-bros itself comes from TestPyPI. Retry because TestPyPI
+        # indexing lags the upload by a few seconds.
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/v
+          installed=""
+          for i in $(seq 1 12); do
+            if /tmp/v/bin/pip install \
+                 --index-url https://test.pypi.org/simple/ \
+                 --extra-index-url https://pypi.org/simple/ \
+                 "mad-bros==${VERSION}"; then
+              installed=1; break
+            fi
+            echo "attempt $i: ${VERSION} not indexed yet, waiting…"
+            sleep 15
+          done
+          if [ -z "$installed" ]; then
+            echo "::error::mad-bros==${VERSION} never became installable from TestPyPI"
+            exit 1
+          fi
+          # The faithful smoke test: the exact import chain that #50 broke.
+          /tmp/v/bin/python -c "from mad.core.sessions import SessionStore; from mad.adapters.inbound.http.app import create_app; create_app(); print('import + create_app OK')"
+
+      - name: Upsert install instructions on the PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        with:
+          script: |
+            const version = process.env.VERSION;
+            const marker = '<!-- testpypi-preview -->';
+            const body = [
+              marker,
+              '📦 **TestPyPI preview published & verified**',
+              '',
+              "Install this PR's exact built artifact with:",
+              '```bash',
+              'pip install --index-url https://test.pypi.org/simple/ \\',
+              `  --extra-index-url https://pypi.org/simple/ "mad-bros==${version}"`,
+              '```',
+              '',
+              '_CI verified a clean-venv install imports `mad.core.sessions` and boots `create_app()`._',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            // Upsert: update our previous comment if present, else create one,
+            // so repeated pushes refresh a single comment instead of spamming.
+            const existing = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number,
+            });
+            const mine = existing.find((c) => c.body && c.body.includes(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
