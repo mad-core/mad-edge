@@ -267,3 +267,77 @@ async def test_orphan_dispatched_task_emits_task_failed_on_restart(
         assert failed[2]["reason"] == "interrupted_by_restart"
     finally:
         await h.stop()
+
+
+# -- Cross-session priority (issue #46) ----------------------------------------
+
+
+async def test_higher_priority_session_dispatches_before_lower_priority(
+    tmp_path: Path,
+) -> None:
+    """Cross-session order is (-priority, head arrived_at): the priority-5
+    session's task dispatches first even though the priority-1 session
+    (a) sits first in the index and (b) holds the earlier-arrived task.
+    The lower-priority task still runs — strictly after."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    low = _session("sesn_low", workspace)
+    high = _session("sesn_high", workspace)
+    high.priority = 5
+    sessions = {"sesn_low": low, "sesn_high": high}
+    launcher = ScriptedLauncher()  # unscripted runs self-complete with status_idle
+    h = _Harness(sessions, launcher)
+
+    # Pre-populate the projection as if bootstrap replayed two queued
+    # tasks; the dispatcher's first _maybe_dispatch_next picks from here.
+    low_task = Task(
+        task_id=uuid4(),
+        session_id="sesn_low",
+        content="arrived first",
+        scheduled_for="now",
+        created_at=dt(2026, 6, 1, 12, 0, tzinfo=UTC),
+    )
+    high_task = Task(
+        task_id=uuid4(),
+        session_id="sesn_high",
+        content="arrived later",
+        scheduled_for="now",
+        created_at=dt(2026, 6, 1, 12, 30, tzinfo=UTC),
+    )
+    h.projection._queued["sesn_low"] = [low_task]
+    h.projection._queued["sesn_high"] = [high_task]
+
+    await h.start()
+    try:
+        await _wait_for_event_type(h.store, session_id="sesn_low", event_type="task.completed")
+
+        dispatched = [c[2]["task_id"] for c in h.store.calls if c[1] == "task.dispatched"]
+        assert dispatched == [str(high_task.task_id), str(low_task.task_id)]
+    finally:
+        await h.stop()
+
+
+async def test_orphan_recovery_clears_projection_in_flight(tmp_path: Path) -> None:
+    """The orphan ``task.failed`` is emitted BEFORE the bus subscription
+    starts, so recovery must clear the projection itself — otherwise
+    GET /v1/queue shows a phantom in-flight forever."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    sessions = {"sesn_a": _session("sesn_a", workspace)}
+    h = _Harness(sessions, ScriptedLauncher())
+    orphan_id = uuid4()
+    h.projection._in_flight["sesn_a"] = Task(
+        task_id=orphan_id,
+        session_id="sesn_a",
+        content="lost work",
+        scheduled_for="now",
+        created_at=dt(2026, 5, 7, tzinfo=UTC),
+    )
+
+    await h.start()
+    try:
+        await _wait_for_event_type(h.store, session_id="sesn_a", event_type="task.failed")
+        assert h.projection.in_flight("sesn_a") is None
+        assert h.projection.pending_session_ids() == []
+    finally:
+        await h.stop()
