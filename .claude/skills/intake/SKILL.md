@@ -99,6 +99,8 @@ Fill it using all gathered information:
 - `{blockers}` as `Blocked by #N` entries if applicable
 - `{branch_context}` in "Additional context" if provided
 
+**HTTP ⇄ MCP parity (CLAUDE.md hard rule 13).** If the issue adds, changes, or removes any request/response HTTP route under `/v1`, the matching MCP tool in `src/mad/adapters/inbound/mcp/server.py` MUST change in the same PR — MCP is the primary consumer and the two surfaces stay at parity. When the issue touches HTTP, add an explicit acceptance criterion to that effect (e.g. "the corresponding MCP tool is added/updated and `test_http_mcp_parity.py` stays green"). The sole exception is the streaming SSE surface (`GET /v1/events/stream`). Surface this in the draft so the author sees it at ticket time, not in review.
+
 Compose the full issue title following this convention:
 ```
 <type>(<scope>): <imperative short description>

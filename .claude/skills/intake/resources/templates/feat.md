@@ -8,6 +8,11 @@
 
 ## Acceptance criteria
 
+<!-- If this adds or changes any request/response HTTP route under /v1, the matching
+     MCP tool in src/mad/adapters/inbound/mcp/server.py MUST be added/changed in the
+     same PR and test_http_mcp_parity.py must stay green (CLAUDE.md hard rule 13).
+     Only the streaming SSE surface (GET /v1/events/stream) is exempt. -->
+
 - [ ]
 - [ ]
 - [ ]
