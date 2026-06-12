@@ -198,6 +198,7 @@ def build_mcp_server(
             SessionSummaryResponse(
                 session_id=s.session_id,
                 status=s.status,
+                priority=s.priority,
                 created_at=s.created_at,
                 updated_at=s.updated_at,
             )
@@ -220,6 +221,7 @@ def build_mcp_server(
             status=output.status,
             workspace=output.workspace,
             events=output.events,
+            priority=output.priority,
             created_at=output.created_at,
             updated_at=output.updated_at,
         )

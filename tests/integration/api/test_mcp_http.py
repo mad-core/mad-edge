@@ -165,6 +165,7 @@ async def test_list_sessions_returns_live_session_with_raw_status(client: TestCl
         {
             "session_id": session_id,
             "status": "created",
+            "priority": 1,
             "created_at": matched[0]["created_at"],
             "updated_at": matched[0]["updated_at"],
         }

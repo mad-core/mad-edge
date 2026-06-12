@@ -15,6 +15,7 @@ from mad.core.sessions.ports.outbound.session_repository import SessionRepositor
 class SessionSummary:
     session_id: str
     status: str
+    priority: int
     created_at: datetime
     updated_at: datetime
 
@@ -71,6 +72,7 @@ class ListSessionsUseCase:
             sid: SessionSummary(
                 session_id=sid,
                 status=s.status,
+                priority=s.priority,
                 created_at=s.created_at,
                 updated_at=s.updated_at,
             )
@@ -83,6 +85,7 @@ class ListSessionsUseCase:
             summaries[sid] = SessionSummary(
                 session_id=sid,
                 status=session.status,
+                priority=session.priority,
                 created_at=session.created_at,
                 updated_at=session.updated_at,
             )

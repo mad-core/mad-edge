@@ -86,6 +86,7 @@ class SendMessageRequest(BaseModel):
 class SessionSummaryResponse(BaseModel):
     session_id: str
     status: str
+    priority: int
     created_at: datetime
     updated_at: datetime
 
@@ -95,6 +96,7 @@ class SessionDetailResponse(BaseModel):
     status: str
     workspace: str
     events: list[dict[str, Any]]
+    priority: int
     created_at: datetime
     updated_at: datetime
 
@@ -226,6 +228,7 @@ async def get_session(session_id: str, request: Request) -> SessionDetailRespons
         status=output.status,
         workspace=output.workspace,
         events=output.events,
+        priority=output.priority,
         created_at=output.created_at,
         updated_at=output.updated_at,
     )
@@ -263,6 +266,7 @@ async def list_sessions(
         SessionSummaryResponse(
             session_id=s.session_id,
             status=s.status,
+            priority=s.priority,
             created_at=s.created_at,
             updated_at=s.updated_at,
         )
