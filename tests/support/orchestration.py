@@ -10,6 +10,21 @@ from __future__ import annotations
 from mad.core.orchestration.domain.task import Task
 
 
+class FakeModelCatalog:
+    """In-memory ``ModelCatalog`` double.
+
+    Initialise with a canned ``provider -> [models]`` mapping. Tests
+    assert on ``InvalidModelError`` for unknown models and on quiet
+    completion for known ones — without hitting any real CLI or network.
+    """
+
+    def __init__(self, catalog: dict[str, list[str]] | None = None) -> None:
+        self._catalog: dict[str, list[str]] = catalog if catalog is not None else {}
+
+    async def discover(self) -> dict[str, list[str]]:
+        return dict(self._catalog)
+
+
 class FakeTaskQueue:
     """In-memory ``TaskQueue`` double.
 
