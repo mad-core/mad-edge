@@ -28,4 +28,12 @@ class AgentLauncher(Protocol):
         prompt: str,
         workspace: Path,
         emit: Callable[[str, dict[str, Any] | None], Coroutine[Any, Any, None]],
-    ) -> None: ...
+        model: str | None = None,
+    ) -> None:
+        """Launch the external agent and stream events via ``emit``.
+
+        ``model`` is an optional model identifier forwarded to the underlying
+        CLI (e.g. ``--model`` for claude).  ``None`` means omit the flag and
+        let the provider's machine-configured default apply.
+        """
+        ...

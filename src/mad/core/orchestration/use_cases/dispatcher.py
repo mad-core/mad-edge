@@ -54,6 +54,10 @@ from mad.core.orchestration.domain.dispatch_policy import (
     can_dispatch,
     next_window_opening,
 )
+from mad.core.orchestration.domain.model_config import (
+    DeploymentModelConfig,
+    resolve_effective_model,
+)
 from mad.core.orchestration.domain.task import Task
 from mad.core.orchestration.ports.clock import Clock
 from mad.core.orchestration.ports.task_projection import TaskProjection
@@ -76,6 +80,7 @@ class Dispatcher:
         clock: Clock | None = None,
         tick_interval_s: float = _DEFAULT_TICK_INTERVAL_S,
         deployment_policy: DeploymentDispatchPolicy | None = None,
+        deployment_model_config: DeploymentModelConfig | None = None,
     ) -> None:
         self._projection = projection
         self._emitter = emitter
@@ -88,6 +93,8 @@ class Dispatcher:
         # (issue #45). Held by reference so a live ``PUT /v1/dispatch_policy``
         # is observed on the next evaluation without restarting the loop.
         self._deployment_policy = deployment_policy or DeploymentDispatchPolicy()
+        # Process-global model default (issue #55). None means omit --model.
+        self._deployment_model_config = deployment_model_config
 
         self._loop_task: asyncio.Task[None] | None = None
         self._launch_task: asyncio.Task[None] | None = None
@@ -260,6 +267,15 @@ class Dispatcher:
         """Drive the launcher for one task, then emit task.completed/failed."""
         try:
             session = self._sessions[task.session_id]
+            effective_model = resolve_effective_model(
+                task_model=task.model,
+                session_model=session.model,
+                deployment_default=(
+                    self._deployment_model_config.default_model
+                    if self._deployment_model_config is not None
+                    else None
+                ),
+            )
             await _run_launcher(
                 session=session,
                 session_id=task.session_id,
@@ -267,6 +283,7 @@ class Dispatcher:
                 get_launcher=self._get_launcher,
                 emitter=self._emitter,
                 propagate_failures=True,
+                model=effective_model,
             )
         except Exception as exc:
             await self._emitter.emit(

@@ -19,6 +19,10 @@ from typing import Any
 
 from mad.core.events.emitter import EventEmitter
 from mad.core.orchestration.domain.exceptions.base import SessionHasInFlightTask
+from mad.core.orchestration.domain.model_config import (
+    DeploymentModelConfig,
+    resolve_effective_model,
+)
 from mad.core.orchestration.ports.task_queue import TaskQueue
 from mad.core.sessions.domain.entities.session import Session
 from mad.core.sessions.domain.exceptions.base import SessionNotFound
@@ -47,11 +51,13 @@ class SendUserMessageUseCase:
         get_launcher: Callable[[str], Any],
         emitter: EventEmitter,
         task_queue: TaskQueue | None = None,
+        deployment_model_config: DeploymentModelConfig | None = None,
     ) -> None:
         self._sessions = sessions_index
         self._get_launcher = get_launcher
         self._emitter = emitter
         self._task_queue = task_queue
+        self._deployment_model_config = deployment_model_config
 
     def execute(self, payload: SendUserMessageInput) -> None:
         """Validate and schedule the agent run. Returns immediately."""
@@ -62,6 +68,15 @@ class SendUserMessageUseCase:
             if in_flight is not None:
                 raise SessionHasInFlightTask(payload.session_id, in_flight.task_id)
         session = self._sessions[payload.session_id]
+        effective_model = resolve_effective_model(
+            task_model=None,
+            session_model=session.model,
+            deployment_default=(
+                self._deployment_model_config.default_model
+                if self._deployment_model_config is not None
+                else None
+            ),
+        )
         # Fire-and-forget: emitter handles both persistence and publish.
         asyncio.create_task(
             self._emitter.emit(
@@ -75,6 +90,7 @@ class SendUserMessageUseCase:
                 prompt=payload.content,
                 get_launcher=self._get_launcher,
                 emitter=self._emitter,
+                model=effective_model,
             )
         )
 
@@ -86,6 +102,7 @@ async def _run_launcher(
     get_launcher: Callable[[str], Any],
     emitter: EventEmitter,
     propagate_failures: bool = False,
+    model: str | None = None,
 ) -> None:
     """Internal coroutine: run the launcher and handle lifecycle events.
 
@@ -95,6 +112,9 @@ async def _run_launcher(
     cleanly. When True, after the ``session.error`` is emitted the
     exception is re-raised so a caller (e.g. the orchestration
     Dispatcher) can map the failure to ``task.failed``.
+
+    ``model`` is the resolved effective model to forward to the launcher.
+    ``None`` means omit ``--model`` and use the provider's own default.
     """
     await emitter.emit(session_id, "session.status_running")
     session.mark_running()
@@ -118,7 +138,13 @@ async def _run_launcher(
 
     primary_failure: Exception | None = None
     try:
-        await launcher.run(session_id=session_id, prompt=prompt, workspace=workspace, emit=emit)
+        await launcher.run(
+            session_id=session_id,
+            prompt=prompt,
+            workspace=workspace,
+            emit=emit,
+            model=model,
+        )
     except Exception as exc:
         if session.status == "running":
             await emitter.emit(session_id, "session.error", {"error": str(exc)})
@@ -134,7 +160,13 @@ async def _run_launcher(
     auto_sync_failure: Exception | None = None
     try:
         auto_sync_prompt = build_auto_sync_prompt(session_id, session.base_branch)
-        await launcher.run(session_id=session_id, prompt=auto_sync_prompt, workspace=workspace, emit=emit)
+        await launcher.run(
+            session_id=session_id,
+            prompt=auto_sync_prompt,
+            workspace=workspace,
+            emit=emit,
+            model=model,
+        )
     except Exception as exc:
         await emitter.emit(
             session_id, "session.error", {"error": f"auto-sync failed: {exc}"}

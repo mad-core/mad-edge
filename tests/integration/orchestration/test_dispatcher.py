@@ -208,6 +208,7 @@ async def test_launcher_exception_emits_task_failed(tmp_path: Path) -> None:
             prompt: str,
             workspace: Path,
             emit: Callable[..., Any],
+            model: str | None = None,
         ) -> None:
             raise RuntimeError("launcher boom")
 
