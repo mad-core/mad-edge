@@ -15,6 +15,11 @@ from mad.core.orchestration.domain.dispatch_policy import (
     InvalidDispatchPolicy,
     policy_from_dict,
 )
+from mad.core.orchestration.domain.ordering import (
+    DEFAULT_PRIORITY,
+    InvalidPriority,
+    validate_priority,
+)
 from mad.core.sessions.domain.entities.session import Session
 
 
@@ -36,6 +41,7 @@ def rehydrate_from_events(session_id: str, events: list[dict[str, Any]]) -> Sess
     # deployment default at dispatch time (issue #45). Replaying a
     # ``dispatch_policy.cleared`` event resets it back to ``None``.
     dispatch_policy: DispatchPolicy | None = None
+    priority = DEFAULT_PRIORITY
 
     for event in events:
         etype = event.get("type", "")
@@ -62,6 +68,14 @@ def rehydrate_from_events(session_id: str, events: list[dict[str, Any]]) -> Sess
             # Issue #45 — DELETE cleared the per-session override; the
             # session goes back to inheriting the deployment default.
             dispatch_policy = None
+        elif etype == "dispatch_priority.updated":
+            # Issue #46 — replay rebuilds Session.priority from the log,
+            # mirroring dispatch_policy.updated above. The JSONL layer
+            # flattens event data, so ``priority`` sits at the top level.
+            try:
+                priority = validate_priority(event.get("priority"))
+            except InvalidPriority:
+                continue
 
         ts = _parse_timestamp(event.get("timestamp"))
         if ts is None:
@@ -85,6 +99,7 @@ def rehydrate_from_events(session_id: str, events: list[dict[str, Any]]) -> Sess
         working_directory=working_directory,
         status=status,
         dispatch_policy=dispatch_policy,
+        priority=priority,
         created_at=created_at,
         updated_at=latest_at,
     )

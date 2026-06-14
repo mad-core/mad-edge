@@ -24,11 +24,15 @@ from mad.core.orchestration.domain.exceptions.base import (
     TaskAlreadyDispatched,
     TaskNotFound,
 )
+from mad.core.orchestration.domain.ordering import InvalidPriority
 from mad.core.orchestration.ports.clock import Clock
 from mad.core.orchestration.use_cases.deployment_dispatch_policy import (
     bootstrap_deployment_policy,
 )
 from mad.core.orchestration.use_cases.dispatcher import Dispatcher
+from mad.core.orchestration.use_cases.rehydrate_pending_sessions import (
+    rehydrate_pending_sessions,
+)
 from mad.core.orchestration.use_cases.trigger_manual_dispatch import TriggerNotApplicable
 from mad.core.sessions import SessionStore
 from mad.core.sessions.domain.exceptions.base import PathTraversalError, SessionNotFound
@@ -127,6 +131,7 @@ def create_app(
         task_projection=final_projection,
         deployment_policy=final_deployment_policy,
         event_log_query=final_event_log_query,
+        clock=final_clock,
     )
     mcp_asgi_app = mcp_server.streamable_http_app()
 
@@ -136,6 +141,11 @@ def create_app(
         # Bootstrap the orchestration projection from the persisted log
         # before the dispatcher's orphan recovery runs (ADR-0009 Decision 5).
         final_projection.bootstrap_from_log(final_event_log_query)
+        # Rebuild every session with pending work into the live index
+        # BEFORE the dispatcher starts (issue #46 Part A) — otherwise
+        # queued work never resumes after a restart until each owning
+        # session is individually fetched.
+        rehydrate_pending_sessions(final_projection, final_repo, final_store.sessions)
         # Rebuild the deployment-wide default policy from its reserved log
         # so an operator-set default survives a restart (issue #45,
         # hard rule 6) before the dispatcher evaluates any session.
@@ -197,6 +207,13 @@ def create_app(
         # contract treats it as a bad request body — 422 makes the bug
         # locatable in the caller's payload, not 400 (which the generic
         # ValueError handler would otherwise emit).
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    @app.exception_handler(InvalidPriority)
+    async def _invalid_priority_handler(request: Request, exc: InvalidPriority) -> JSONResponse:
+        # Same reasoning as InvalidDispatchPolicy: an out-of-range
+        # priority is a defect in the caller's payload — 422, never a
+        # silent clamp (issue #46 hard rule).
         return JSONResponse(status_code=422, content={"detail": str(exc)})
 
     @app.exception_handler(TriggerNotApplicable)

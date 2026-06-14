@@ -1,6 +1,6 @@
-"""Orchestration endpoints — task queue + dispatch policies (ADR-0009).
+"""Orchestration endpoints — task queue, dispatch policies, priority, global queue.
 
-Five endpoints:
+Ten endpoints:
 
 Task queue (issue #28):
 - ``POST /v1/sessions/{session_id}/tasks`` — enqueue a task.
@@ -13,6 +13,20 @@ Dispatch policies (issue #33 / ADR-0009 §9):
   ``dispatch_policy.updated``.
 - ``POST /v1/sessions/{session_id}/dispatch_policy/trigger`` — drain the
   queue once in ``manual`` mode; 409 in any other mode.
+
+Deployment-wide dispatch policy (issue #45):
+- ``GET /v1/dispatch_policy`` — read the deployment-wide default.
+- ``PUT /v1/dispatch_policy`` — set the deployment-wide default; emits
+  ``dispatch_policy.default.updated``.
+- ``DELETE /v1/sessions/{session_id}/dispatch_policy`` — clear a session's
+  override so it re-inherits the default; emits ``dispatch_policy.cleared``.
+
+Cross-session ordering + global queue view (issue #46 / ADR-0009 §10):
+- ``PATCH /v1/sessions/{session_id}/priority`` — set the cross-session
+  dispatch priority ([1, 10], higher first); emits
+  ``dispatch_priority.updated``.
+- ``GET /v1/queue`` — the global queue: ``in_flight`` / ``ready`` /
+  ``scheduled``, policy-aware, in true dispatch order.
 
 All inputs and outputs are typed Pydantic models per hard rule 9.
 Domain exceptions raised by the use cases (``SessionNotFound``,
@@ -36,6 +50,7 @@ from mad.core.orchestration.domain.dispatch_policy import (
     policy_from_dict,
     policy_to_dict,
 )
+from mad.core.orchestration.domain.ordering import MAX_PRIORITY, MIN_PRIORITY
 from mad.core.orchestration.use_cases.cancel_task import (
     CancelTaskInput,
     CancelTaskUseCase,
@@ -53,6 +68,11 @@ from mad.core.orchestration.use_cases.enqueue_task import (
     EnqueueTaskInput,
     EnqueueTaskUseCase,
 )
+from mad.core.orchestration.use_cases.get_global_queue import (
+    GetGlobalQueueUseCase,
+    QueueEntry,
+    ScheduledEntry,
+)
 from mad.core.orchestration.use_cases.list_tasks import ListTasksUseCase
 from mad.core.orchestration.use_cases.trigger_manual_dispatch import (
     TriggerManualDispatchInput,
@@ -61,6 +81,10 @@ from mad.core.orchestration.use_cases.trigger_manual_dispatch import (
 from mad.core.orchestration.use_cases.update_dispatch_policy import (
     UpdateDispatchPolicyInput,
     UpdateDispatchPolicyUseCase,
+)
+from mad.core.orchestration.use_cases.update_dispatch_priority import (
+    UpdateDispatchPriorityInput,
+    UpdateDispatchPriorityUseCase,
 )
 
 router = APIRouter(tags=["orchestration"])
@@ -179,6 +203,68 @@ class ClearDispatchPolicyResponse(BaseModel):
 class TriggerManualDispatchResponse(BaseModel):
     session_id: str
     drained: int = Field(..., description="Number of currently-queued tasks the trigger covers.")
+
+
+# -- Priority + global queue shapes (issue #46) ---------------------------------
+
+
+class UpdatePriorityRequest(BaseModel):
+    priority: int = Field(
+        ...,
+        ge=MIN_PRIORITY,
+        le=MAX_PRIORITY,
+        description=(
+            "Cross-session dispatch priority. Higher dispatches first; "
+            f"[{MIN_PRIORITY}, {MAX_PRIORITY}]. Out-of-range values are "
+            "rejected, never clamped."
+        ),
+    )
+
+
+class SessionPriorityResponse(BaseModel):
+    session_id: str
+    priority: int
+
+
+class QueueTaskEntry(BaseModel):
+    """The ``Task`` shape annotated with ``session_id`` + ``priority``."""
+
+    task_id: UUID
+    session_id: str
+    content: str
+    scheduled_for: str = Field(
+        ..., description="The verbatim scheduling hint recorded at enqueue time (v1)."
+    )
+    created_at: datetime
+    priority: int
+
+
+class ScheduleReason(BaseModel):
+    """Why a queued task is not in ``ready`` right now."""
+
+    kind: Literal["window", "manual"]
+    scheduled_for: datetime | None = Field(
+        default=None,
+        description=(
+            "Next work_window opening (UTC) for kind='window'; null for "
+            "kind='manual' or when no window opens within the lookahead horizon."
+        ),
+    )
+
+
+class ScheduledTaskEntry(QueueTaskEntry):
+    reason: ScheduleReason
+
+
+class GlobalQueueResponse(BaseModel):
+    """``GET /v1/queue`` — policy groups are never flattened: ``ready``
+    holds only sessions dispatchable right now (true dispatch order;
+    ``ready[0]`` is what dispatches next), ``scheduled`` holds the
+    window-gated / manual ones with a reason."""
+
+    in_flight: QueueTaskEntry | None = None
+    ready: list[QueueTaskEntry]
+    scheduled: list[ScheduledTaskEntry]
 
 
 # -- Helpers -------------------------------------------------------------------
@@ -413,4 +499,79 @@ async def clear_dispatch_policy(
     return ClearDispatchPolicyResponse(
         session_id=output.session_id,
         effective_policy=policy_to_dict(output.effective_policy),
+    )
+
+
+# -- Priority + global queue routes (issue #46) ---------------------------------
+
+
+@router.patch(
+    "/v1/sessions/{session_id}/priority",
+    response_model=SessionPriorityResponse,
+)
+async def update_priority(
+    session_id: str,
+    payload: UpdatePriorityRequest,
+    request: Request,
+) -> SessionPriorityResponse:
+    """Set the session's cross-session dispatch priority.
+
+    Higher dispatches first; ties break on the head queued task's
+    arrival time. Within-session order stays FIFO. Emits
+    ``dispatch_priority.updated`` so the priority survives a process
+    restart via JSONL replay.
+    """
+    use_case = UpdateDispatchPriorityUseCase(
+        sessions_index=_store(request).sessions,
+        emitter=_emitter(request),
+    )
+    output = await use_case.execute(
+        UpdateDispatchPriorityInput(session_id=session_id, priority=payload.priority)
+    )
+    return SessionPriorityResponse(session_id=output.session_id, priority=output.priority)
+
+
+def _queue_task_entry(entry: QueueEntry) -> QueueTaskEntry:
+    return QueueTaskEntry(
+        task_id=entry.task.task_id,
+        session_id=entry.task.session_id,
+        content=entry.task.content,
+        scheduled_for=entry.task.scheduled_for,
+        created_at=entry.task.created_at,
+        priority=entry.priority,
+    )
+
+
+def _scheduled_task_entry(entry: ScheduledEntry) -> ScheduledTaskEntry:
+    return ScheduledTaskEntry(
+        task_id=entry.task.task_id,
+        session_id=entry.task.session_id,
+        content=entry.task.content,
+        scheduled_for=entry.task.scheduled_for,
+        created_at=entry.task.created_at,
+        priority=entry.priority,
+        reason=ScheduleReason(kind=entry.reason_kind, scheduled_for=entry.scheduled_for),
+    )
+
+
+@router.get("/v1/queue", response_model=GlobalQueueResponse)
+async def get_global_queue(request: Request) -> GlobalQueueResponse:
+    """Global queue view across all sessions, policy-aware.
+
+    ``ready`` is computed with the same ordering function AND the same
+    effective-policy resolution (per-session override, else the
+    deployment default, else immediate — issue #45) the dispatcher
+    uses, so ``ready[0]`` is exactly the next dispatch.
+    """
+    use_case = GetGlobalQueueUseCase(
+        sessions_index=_store(request).sessions,
+        task_queue=_projection(request),
+        clock=request.app.state.clock,
+        deployment=_deployment_policy(request),
+    )
+    output = use_case.execute()
+    return GlobalQueueResponse(
+        in_flight=_queue_task_entry(output.in_flight) if output.in_flight else None,
+        ready=[_queue_task_entry(e) for e in output.ready],
+        scheduled=[_scheduled_task_entry(e) for e in output.scheduled],
     )

@@ -54,6 +54,7 @@ from mad.core.orchestration.domain.dispatch_policy import (
     can_dispatch,
     next_window_opening,
 )
+from mad.core.orchestration.domain.ordering import order_ready_candidates
 from mad.core.orchestration.domain.task import Task
 from mad.core.orchestration.ports.clock import Clock
 from mad.core.orchestration.ports.task_projection import TaskProjection
@@ -145,7 +146,7 @@ class Dispatcher:
             orphan = self._projection.in_flight(session_id)
             if orphan is None:
                 continue
-            await self._emitter.emit(
+            event = await self._emitter.emit(
                 session_id,
                 "task.failed",
                 {
@@ -153,6 +154,12 @@ class Dispatcher:
                     "reason": "interrupted_by_restart",
                 },
             )
+            # The bus subscription only starts AFTER recovery (see
+            # start()), so the loop never applies this event — apply it
+            # here or the projection keeps a phantom in_flight for the
+            # whole process lifetime and GET /v1/queue disagrees with
+            # the dispatcher.
+            self._projection.apply(event)
 
     # -- Main loop ---------------------------------------------------------
 
@@ -223,13 +230,20 @@ class Dispatcher:
         self._launch_task = asyncio.create_task(self._run_task(next_task))
 
     def _find_next_dispatchable(self) -> Task | None:
-        for session_id in self._sessions:
-            if not self._can_dispatch_for_session(session_id):
-                continue
-            queued = self._projection.queued(session_id)
-            if queued:
-                return queued[0]
-        return None
+        """Pick the next task in cross-session dispatch order.
+
+        Shares ``order_ready_candidates`` with ``GET /v1/queue`` (issue
+        #46 Part D) so the operator-facing ``ready`` list and the
+        dispatcher can never disagree: the queue view shows the list,
+        the dispatcher takes ``[0]``.
+        """
+        eligible = [
+            session
+            for session_id, session in self._sessions.items()
+            if self._can_dispatch_for_session(session_id)
+        ]
+        ordered = order_ready_candidates(eligible, self._projection)
+        return ordered[0] if ordered else None
 
     def _can_dispatch_for_session(self, session_id: str) -> bool:
         session = self._sessions[session_id]

@@ -137,3 +137,72 @@ def test_rehydrate_empty_events_yields_epoch_timestamps() -> None:
     assert s.created_at == datetime.fromtimestamp(0, tz=UTC)
     assert s.updated_at == s.created_at
     assert s.status == "created"
+
+
+# -- dispatch_priority.updated replay (issue #46) -------------------------------
+
+
+def test_rehydrate_replays_latest_dispatch_priority() -> None:
+    """``Session.priority`` is durable ONLY as the replayed event — the
+    last ``dispatch_priority.updated`` in the log wins."""
+    events = [
+        {
+            "type": "session.created",
+            "timestamp": "2026-06-01T09:00:00+00:00",
+            "agent": "t",
+        },
+        {
+            "type": "dispatch_priority.updated",
+            "timestamp": "2026-06-01T09:01:00+00:00",
+            "priority": 3,
+        },
+        {
+            "type": "dispatch_priority.updated",
+            "timestamp": "2026-06-01T09:02:00+00:00",
+            "priority": 9,
+        },
+    ]
+    s = rehydrate_from_events("sesn_x", events)
+
+    assert s.priority == 9
+
+
+def test_rehydrate_without_priority_event_defaults_to_lowest() -> None:
+    """Negative twin: a session never prioritized replays to priority 1
+    (the lowest) — an explicitly prioritized session always outranks it."""
+    events = [
+        {
+            "type": "session.created",
+            "timestamp": "2026-06-01T09:00:00+00:00",
+            "agent": "t",
+        },
+    ]
+    s = rehydrate_from_events("sesn_x", events)
+
+    assert s.priority == 1
+
+
+def test_rehydrate_skips_malformed_priority_payloads() -> None:
+    """Out-of-range or non-int payloads (hand-edited logs) must not poison
+    the replay: the previous valid value is kept, mirroring how malformed
+    dispatch_policy payloads are skipped."""
+    events = [
+        {
+            "type": "dispatch_priority.updated",
+            "timestamp": "2026-06-01T09:01:00+00:00",
+            "priority": 4,
+        },
+        {
+            "type": "dispatch_priority.updated",
+            "timestamp": "2026-06-01T09:02:00+00:00",
+            "priority": 42,
+        },
+        {
+            "type": "dispatch_priority.updated",
+            "timestamp": "2026-06-01T09:03:00+00:00",
+            "priority": "high",
+        },
+    ]
+    s = rehydrate_from_events("sesn_x", events)
+
+    assert s.priority == 4

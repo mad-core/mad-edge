@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from mad.core.events.emitter import EventEmitter
+from mad.core.orchestration.ports.task_queue import TaskQueue
 from mad.core.sessions.domain.entities.session import Session
 from mad.core.sessions.domain.rehydrate import rehydrate_from_events
 from mad.core.sessions.ports.outbound.session_repository import SessionRepository
@@ -56,11 +57,13 @@ class CleanupSessionsUseCase:
         sessions_index: dict[str, Session],
         repo: SessionRepository,
         emitter: EventEmitter,
+        task_queue: TaskQueue,
     ) -> None:
         self._provisioner = provisioner
         self._sessions = sessions_index
         self._repo = repo
         self._emitter = emitter
+        self._task_queue = task_queue
 
     async def execute(self, payload: CleanupSessionsInput) -> CleanupSessionsOutput:
         candidates: list[Session] = []
@@ -91,7 +94,9 @@ class CleanupSessionsUseCase:
 
         deleted_ids: list[str] = []
         for session in candidates:
-            await destroy_session(session, self._provisioner, self._emitter)
+            await destroy_session(
+                session, self._provisioner, self._emitter, self._task_queue
+            )
             deleted_ids.append(session.session_id)
 
         return CleanupSessionsOutput(

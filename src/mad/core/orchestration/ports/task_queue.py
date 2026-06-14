@@ -29,3 +29,12 @@ class TaskQueue(Protocol):
     def in_flight(self, session_id: str) -> Task | None:
         """Return the currently-dispatched task for ``session_id``, if any."""
         ...
+
+    def pending_session_ids(self) -> list[str]:
+        """Return ids of sessions with at least one queued or in-flight task.
+
+        Cross-session read (issue #46): startup rehydration uses it to
+        decide which sessions to rebuild into the live index, and
+        ``GET /v1/queue`` uses it to scope the global queue view.
+        """
+        ...

@@ -248,3 +248,36 @@ def test_bootstrap_on_empty_log_yields_empty_projection() -> None:
 
     assert proj.queued("sesn_a") == []
     assert proj.in_flight("sesn_a") is None
+
+
+# -- pending_session_ids() (issue #46) -----------------------------------------
+
+
+def test_pending_session_ids_reports_queued_and_in_flight_sessions() -> None:
+    p = InMemoryTaskProjection()
+    queued_only = uuid4()
+    flying = uuid4()
+    p.apply(_event(type="task.queued", session_id="sesn_queued", task_id=queued_only))
+    p.apply(_event(type="task.queued", session_id="sesn_flying", task_id=flying))
+    p.apply(_event(type="task.dispatched", session_id="sesn_flying", task_id=flying))
+
+    assert p.pending_session_ids() == ["sesn_flying", "sesn_queued"]
+
+
+def test_pending_session_ids_excludes_sessions_whose_work_terminated() -> None:
+    """Negative twin: a session whose only task completed (or was
+    cancelled) has NO pending work — it must not be rehydrated at boot."""
+    p = InMemoryTaskProjection()
+    done = uuid4()
+    cancelled = uuid4()
+    p.apply(_event(type="task.queued", session_id="sesn_done", task_id=done))
+    p.apply(_event(type="task.dispatched", session_id="sesn_done", task_id=done))
+    p.apply(_event(type="task.completed", session_id="sesn_done", task_id=done))
+    p.apply(_event(type="task.queued", session_id="sesn_gone", task_id=cancelled))
+    p.apply(_event(type="task.cancelled", session_id="sesn_gone", task_id=cancelled))
+
+    assert p.pending_session_ids() == []
+
+
+def test_pending_session_ids_on_empty_projection_is_empty() -> None:
+    assert InMemoryTaskProjection().pending_session_ids() == []

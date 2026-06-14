@@ -33,3 +33,7 @@ class FakeTaskQueue:
 
     def in_flight(self, session_id: str) -> Task | None:
         return self._in_flight.get(session_id)
+
+    def pending_session_ids(self) -> list[str]:
+        with_queued = {sid for sid, tasks in self._queued.items() if tasks}
+        return sorted(with_queued | self._in_flight.keys())

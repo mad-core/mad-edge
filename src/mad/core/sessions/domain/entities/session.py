@@ -14,6 +14,7 @@ from typing import Any
 from mad.core.orchestration.domain.dispatch_policy import (
     DispatchPolicy,
 )
+from mad.core.orchestration.domain.ordering import DEFAULT_PRIORITY
 
 
 _SENTINEL = datetime.fromtimestamp(0, tz=UTC)
@@ -44,6 +45,10 @@ class Session:
     tokens_to_redact: list[str] = field(default_factory=list, repr=False)
     dispatch_policy: DispatchPolicy | None = field(default=None, repr=False)
     manual_drain_remaining: int = field(default=0, repr=False)
+    # Cross-session dispatch priority (issue #46): higher dispatches
+    # first; [1, 10]; 1 (lowest) when never set, so an explicitly
+    # prioritized session always outranks an unprioritized one.
+    priority: int = DEFAULT_PRIORITY
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = _SENTINEL
 
@@ -97,6 +102,7 @@ class Session:
             "base_branch": self.base_branch,
             "resources_mounted": self.resources_mounted,
             "response": self.response,
+            "priority": self.priority,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -116,6 +122,7 @@ class Session:
             base_branch=d.get("base_branch"),
             resources_mounted=d.get("resources_mounted", []),
             response=d.get("response", {}),
+            priority=d.get("priority", DEFAULT_PRIORITY),
             created_at=created_at,
             updated_at=updated_at,
         )

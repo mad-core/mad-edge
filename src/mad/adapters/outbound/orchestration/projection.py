@@ -54,6 +54,13 @@ class InMemoryTaskProjection:
     def in_flight(self, session_id: str) -> Task | None:
         return self._in_flight.get(session_id)
 
+    def pending_session_ids(self) -> list[str]:
+        # Sorted so callers see a deterministic order regardless of
+        # event arrival; defaultdict may hold empty lists after a
+        # session's tasks all reach terminal state — filter those out.
+        with_queued = {sid for sid, tasks in self._queued.items() if tasks}
+        return sorted(with_queued | self._in_flight.keys())
+
     # -- Lifecycle ---------------------------------------------------------
 
     def bootstrap_from_log(self, log: EventLogQuery) -> None:

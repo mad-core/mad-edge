@@ -16,14 +16,17 @@ reads disk events from — matching production where one
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from mad.core.events.emitter import EventEmitter
+from mad.core.orchestration.domain.task import Task
 from mad.core.sessions.domain.entities.session import Session
 from mad.core.sessions.use_cases.cleanup_sessions import (
     CleanupSessionsInput,
     CleanupSessionsUseCase,
 )
 from support.events import RecordingEventBus as FakeBus
+from support.orchestration import FakeTaskQueue
 from support.sessions import FakeProvisioner, FakeSessionRepository
 
 
@@ -83,6 +86,7 @@ def _make_uc(
     sessions: dict[str, Session],
     provisioner: FakeProvisioner,
     repo: FakeSessionRepository | None = None,
+    task_queue: FakeTaskQueue | None = None,
 ) -> tuple[CleanupSessionsUseCase, FakeSessionRepository, FakeBus]:
     repo = repo or FakeSessionRepository()
     bus = FakeBus()
@@ -92,6 +96,7 @@ def _make_uc(
         sessions_index=sessions,
         repo=repo,
         emitter=emitter,
+        task_queue=task_queue or FakeTaskQueue(),
     )
     return uc, repo, bus
 
@@ -100,6 +105,11 @@ def _emitted_deleted(bus: FakeBus) -> list[tuple[str, dict[str, object]]]:
     """Return (session_id, data) pairs for every ``session.deleted`` event
     published during the test. Filters out any pre-seeded log entries."""
     return [(e.session_id, e.data) for e in bus.published if e.type == "session.deleted"]
+
+
+def _cancelled(bus: FakeBus) -> list[tuple[str, dict[str, object]]]:
+    """Return (session_id, data) pairs for every ``task.cancelled`` event."""
+    return [(e.session_id, e.data) for e in bus.published if e.type == "task.cancelled"]
 
 
 # ---------------------------------------------------------------------------
@@ -396,3 +406,62 @@ async def test_cleanup_unions_in_memory_and_disk_in_examined_count() -> None:
     # Both are too young → nothing deleted, both examined.
     assert out.deleted_session_ids == []
     assert out.examined == 2
+
+
+# ---------------------------------------------------------------------------
+# Queued-task cancellation: bulk delete reuses destroy_session, so a
+# destroyed session's queued tasks are cancelled too (issue #46)
+# ---------------------------------------------------------------------------
+
+
+async def test_cleanup_cancels_queued_tasks_of_destroyed_sessions() -> None:
+    """A destroyed candidate's queued task is cancelled with reason
+    ``session_deleted`` so it never lingers in the cross-session queue
+    after its session is gone — same orphan fix as the single-delete path,
+    via the shared ``destroy_session`` primitive."""
+    sid = "sesn_old"
+    sessions = {sid: _make_session(sid, "idle", datetime(2025, 1, 1, tzinfo=UTC))}
+    provisioner = FakeProvisioner()
+    task = Task(
+        task_id=uuid4(),
+        session_id=sid,
+        content="overnight VIP",
+        scheduled_for="now",
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    queue = FakeTaskQueue(queued={sid: [task]})
+    uc, _, bus = _make_uc(sessions, provisioner, task_queue=queue)
+
+    out = await uc.execute(
+        CleanupSessionsInput(older_than=datetime(2025, 6, 1, tzinfo=UTC), dry_run=False)
+    )
+
+    assert out.deleted_session_ids == [sid]
+    assert _cancelled(bus) == [(sid, {"task_id": str(task.task_id), "reason": "session_deleted"})]
+
+
+async def test_cleanup_dry_run_does_not_cancel_queued_tasks() -> None:
+    """Negative twin: dry_run reports the candidate but mutates nothing —
+    no destroy, no ``session.deleted``, and crucially no ``task.cancelled``
+    for its queued task."""
+    sid = "sesn_old"
+    sessions = {sid: _make_session(sid, "idle", datetime(2025, 1, 1, tzinfo=UTC))}
+    provisioner = FakeProvisioner()
+    task = Task(
+        task_id=uuid4(),
+        session_id=sid,
+        content="overnight VIP",
+        scheduled_for="now",
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    queue = FakeTaskQueue(queued={sid: [task]})
+    uc, _, bus = _make_uc(sessions, provisioner, task_queue=queue)
+
+    out = await uc.execute(
+        CleanupSessionsInput(older_than=datetime(2025, 6, 1, tzinfo=UTC), dry_run=True)
+    )
+
+    assert out.would_delete == [sid]
+    assert provisioner.destroyed == []
+    assert _cancelled(bus) == []
+    assert _emitted_deleted(bus) == []

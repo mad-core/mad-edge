@@ -42,23 +42,41 @@ _ROUTE_TO_TOOL: dict[tuple[str, str], str] = {
     ("POST", "/v1/sessions/{session_id}/dispatch_policy/trigger"): "mad_trigger_dispatch",
     ("GET", "/v1/dispatch_policy"): "mad_get_deployment_dispatch_policy",
     ("PUT", "/v1/dispatch_policy"): "mad_set_deployment_dispatch_policy",
+    ("PATCH", "/v1/sessions/{session_id}/priority"): "mad_set_session_priority",
+    ("GET", "/v1/queue"): "mad_get_queue",
     ("GET", "/v1/events"): "mad_query_events",
 }
+
+
+def _collect_v1_routes(route_list: object, acc: set[tuple[str, str]]) -> None:
+    """Recurse into nested route containers collecting /v1 APIRoute leaves.
+
+    The leaves live at different depths depending on the FastAPI version:
+    older FastAPI flattened ``include_router`` results into ``app.routes``;
+    FastAPI >= 0.137 wraps each one in an ``_IncludedRouter`` that exposes
+    the sub-router's routes via ``.original_router.routes``. Mounts (e.g.
+    ``/mcp``) expose ``.routes``. Try ``.routes`` first, then fall back to
+    ``.original_router.routes``, so the parity check is robust to either
+    representation. The ``isinstance``/``/v1`` filter discards anything
+    non-matching (such as the MCP mount's routes).
+    """
+    for route in route_list:  # type: ignore[attr-defined]
+        if isinstance(route, APIRoute) and route.path.startswith("/v1"):
+            for method in route.methods:
+                if method not in {"HEAD", "OPTIONS"}:
+                    acc.add((method, route.path))
+        nested = getattr(route, "routes", None)
+        if not nested:
+            original = getattr(route, "original_router", None)
+            nested = getattr(original, "routes", None) if original is not None else None
+        if nested:
+            _collect_v1_routes(nested, acc)
 
 
 def _live_v1_routes(app) -> set[tuple[str, str]]:
     """Every (method, path) the running app serves under /v1."""
     routes: set[tuple[str, str]] = set()
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
-            continue
-        path = route.path
-        if not path.startswith("/v1"):
-            continue
-        for method in route.methods:
-            if method in {"HEAD", "OPTIONS"}:
-                continue
-            routes.add((method, path))
+    _collect_v1_routes(app.routes, routes)
     return routes
 
 

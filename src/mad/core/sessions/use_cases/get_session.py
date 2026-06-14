@@ -21,6 +21,7 @@ class GetSessionOutput:
     status: str
     workspace: str
     events: list[dict[str, Any]]
+    priority: int
     created_at: datetime
     updated_at: datetime
 
@@ -51,6 +52,7 @@ class GetSessionUseCase:
             status=session.status,
             workspace=session.workspace,
             events=events,
+            priority=session.priority,
             created_at=session.created_at,
             updated_at=session.updated_at,
         )
