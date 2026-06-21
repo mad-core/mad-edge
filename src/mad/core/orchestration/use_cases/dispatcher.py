@@ -334,7 +334,17 @@ class Dispatcher:
                     if rl_exc.captured_id is not None:
                         session.last_conversation_id = rl_exc.captured_id
 
+                    # The exponential schedule is a floor on responsiveness;
+                    # a usage/session limit that advertises resetsAt overrides
+                    # it so we wait until the limit actually resets instead of
+                    # hammering it every 30 s.  The cumulative ceiling below
+                    # still bounds the total wait at 5 h.
                     delay = backoff_s(attempt)
+                    if (
+                        rl_exc.retry_after_floor_s is not None
+                        and rl_exc.retry_after_floor_s > delay
+                    ):
+                        delay = rl_exc.retry_after_floor_s
                     cumulative_wait_s += delay
 
                     if exceeds_ceiling(cumulative_wait_s):

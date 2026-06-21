@@ -438,6 +438,138 @@ async def test_claude_cli_billing_error_emits_session_error_not_rate_limit(
     )
 
 
+# ---------------------------------------------------------------------------
+# AC-10 (follow-up): terminal-stdout rate-limit shape with CLAUDE_CODE_MAX_RETRIES=0.
+#
+# With internal retries disabled the CLI never emits system/api_retry. A real
+# usage/session limit instead arrives as: a rate_limit_event (status="rejected"
+# carrying resetsAt), an assistant message with error="rate_limit", and a
+# terminal result (is_error=true, api_error_status=429) — all on STDOUT, with
+# stderr empty and exit 1. The pre-fix detector keyed only on api_retry / stderr
+# and silently drained the task. See issue #62 root-cause comment.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_rate_limit_terminal_stdout_result_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The terminal-stdout 429 shape (rate_limit_event + assistant + result,
+    empty stderr, exit 1) must raise RateLimitError, capture the conversation
+    ID, carry a retry floor from resetsAt, and emit NO session.error."""
+    fake_bin = _make_executable_script(
+        tmp_path / "fake_claude",
+        """\
+        import sys, json, time
+        print(json.dumps({"type": "system", "subtype": "init", "session_id": "conv-incident"}))
+        resets = int(time.time()) + 3600
+        print(json.dumps({"type": "rate_limit_event", "rate_limit_info": {
+            "status": "rejected", "resetsAt": resets, "rateLimitType": "five_hour",
+            "overageStatus": "rejected", "overageDisabledReason": "org_level_disabled"}}))
+        print(json.dumps({"type": "assistant", "message": {"model": "<synthetic>"}, "error": "rate_limit"}))
+        print(json.dumps({"type": "result", "subtype": "success", "is_error": True,
+            "api_error_status": 429, "result": "You've hit your session limit"}))
+        sys.exit(1)
+        """,
+    )
+    monkeypatch.setenv("MAD_CLAUDE_CLI_BIN", str(fake_bin))
+
+    launcher = ClaudeCLIProvider()
+    captured_events: list[dict] = []
+
+    async def capture(event_type: str, event: dict) -> None:
+        captured_events.append(event)
+
+    with pytest.raises(RateLimitError) as excinfo:
+        await launcher.run(session_id="s1", prompt="x", workspace=tmp_path, emit=capture)
+
+    assert excinfo.value.reason == "rate_limit", (
+        f"Expected reason='rate_limit', got: {excinfo.value.reason!r}"
+    )
+    assert excinfo.value.captured_id == "conv-incident", (
+        f"Expected captured_id from system/init, got: {excinfo.value.captured_id!r}"
+    )
+    # resetsAt was now+3600; the launcher converts it to a remaining-seconds
+    # floor at raise time, so it lands just under an hour.
+    assert excinfo.value.retry_after_floor_s == pytest.approx(3600, abs=120), (
+        f"Expected ~3600 s retry floor from resetsAt, got: {excinfo.value.retry_after_floor_s!r}"
+    )
+    error_events = [e for e in captured_events if e.get("type") == "session.error"]
+    assert len(error_events) == 0, (
+        f"session.error must NOT be emitted for a terminal-stdout 429, got: {error_events}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_terminal_result_non_429_emits_session_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Negative twin: a terminal result with is_error but a non-retriable status
+    (500) is a real failure — session.error emitted, NOT RateLimitError."""
+    fake_bin = _make_executable_script(
+        tmp_path / "fake_claude",
+        """\
+        import sys, json
+        print(json.dumps({"type": "result", "subtype": "success", "is_error": True,
+            "api_error_status": 500, "result": "internal server error"}))
+        sys.exit(1)
+        """,
+    )
+    monkeypatch.setenv("MAD_CLAUDE_CLI_BIN", str(fake_bin))
+
+    launcher = ClaudeCLIProvider()
+    captured_events: list[dict] = []
+
+    async def capture(event_type: str, event: dict) -> None:
+        captured_events.append(event)
+
+    # Must NOT raise — a 500 is terminal, not a rate limit.
+    await launcher.run(session_id="s1", prompt="x", workspace=tmp_path, emit=capture)
+
+    error_events = [e for e in captured_events if e.get("type") == "session.error"]
+    assert len(error_events) >= 1, (
+        f"Expected session.error for a non-429 terminal result, got: {captured_events}"
+    )
+    assert error_events[-1].get("exit_code") == 1, (
+        f"session.error must carry exit_code=1, got: {error_events[-1]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_rate_limit_without_resets_at_has_no_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Negative twin for the retry floor: a 429 result with NO rate_limit_event
+    (so no resetsAt) still raises RateLimitError, but retry_after_floor_s is
+    None — the dispatcher falls back to the plain backoff schedule."""
+    fake_bin = _make_executable_script(
+        tmp_path / "fake_claude",
+        """\
+        import sys, json
+        print(json.dumps({"type": "result", "is_error": True, "api_error_status": 429}))
+        sys.exit(1)
+        """,
+    )
+    monkeypatch.setenv("MAD_CLAUDE_CLI_BIN", str(fake_bin))
+
+    launcher = ClaudeCLIProvider()
+    captured_events: list[dict] = []
+
+    async def capture(event_type: str, event: dict) -> None:
+        captured_events.append(event)
+
+    with pytest.raises(RateLimitError) as excinfo:
+        await launcher.run(session_id="s1", prompt="x", workspace=tmp_path, emit=capture)
+
+    assert excinfo.value.retry_after_floor_s is None, (
+        f"Expected no retry floor without resetsAt, got: {excinfo.value.retry_after_floor_s!r}"
+    )
+    error_events = [e for e in captured_events if e.get("type") == "session.error"]
+    assert len(error_events) == 0, (
+        f"session.error must NOT be emitted for a 429 result, got: {error_events}"
+    )
+
+
 @pytest.mark.asyncio
 async def test_claude_cli_sets_max_retries_env_zero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

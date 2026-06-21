@@ -287,6 +287,51 @@ async def test_rate_limit_passes_captured_id_to_next_attempt(
         await h.stop()
 
 
+async def test_rate_limit_floor_overrides_backoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the launcher advertises a retry floor (from resetsAt) larger than
+    the backoff interval, the dispatcher waits the floor, not the backoff.
+    Negative twin: test_rate_limit_retry_then_success (floor=None) waits the
+    plain backoff (~0.01 s)."""
+    import mad.core.orchestration.domain.retry_schedule as sched
+
+    # backoff(0) would be ~0.01 s; the floor below (0.05 s) must win.
+    monkeypatch.setattr(sched, "_BASE_S", 0.01)
+    monkeypatch.setattr(sched, "_JITTER_FRACTION", 0.0)
+    monkeypatch.setattr(sched, "_MIN_BACKOFF_S", 0.0)
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    launcher = ScriptedLauncher()
+    rl = RateLimitError(captured_id=None, reason="rate_limit", retry_after_floor_s=0.05)
+    launcher.script_raising(
+        [
+            rl,
+            ([{"type": "session.status_idle", "stop_reason": "end_turn"}], None),
+            ([{"type": "session.status_idle", "stop_reason": "end_turn"}], None),
+        ]
+    )
+
+    sessions = {"sesn_floor": _session("sesn_floor", workspace)}
+    h = _Harness(sessions, launcher)
+    await h.start()
+    try:
+        await h.enqueue.execute(
+            EnqueueTaskInput(session_id="sesn_floor", content="work", conversation_mode="new")
+        )
+        await _wait_for_event(h.store, session_id="sesn_floor", event_type="task.retrying")
+
+        retrying = next(
+            c for c in h.store.calls if c[0] == "sesn_floor" and c[1] == "task.retrying"
+        )
+        assert retrying[2]["retry_after_s"] == pytest.approx(0.05), (
+            f"floor (0.05 s) must override backoff (0.01 s), got: {retrying[2]['retry_after_s']}"
+        )
+    finally:
+        await h.stop()
+
+
 async def test_retrying_projection_shows_retry_info(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

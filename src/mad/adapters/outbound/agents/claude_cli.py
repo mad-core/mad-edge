@@ -4,6 +4,8 @@ import asyncio
 import json
 import os
 import shutil
+import time
+from collections import deque
 from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
@@ -17,8 +19,22 @@ from mad.adapters.outbound.agents._subprocess import (
 from mad.adapters.outbound.agents.hook_socket import resolve_hook_socket_path
 from mad.core.orchestration.domain.exceptions.rate_limit import RateLimitError
 
-# Errors the CLI reports in system/api_retry events that are retriable.
+# Errors the CLI reports (in system/api_retry events, in the top-level
+# ``error`` of an assistant message, or anywhere else in the stream) that
+# are transient and retriable.  ``billing_error`` / ``authentication_failed``
+# are deliberately absent — those are terminal and must drain to session.error.
 _RETRIABLE_ERRORS = frozenset({"rate_limit", "overloaded"})
+
+# HTTP statuses the CLI reports on a terminal ``result`` event that mean
+# "transient upstream limit" rather than a real failure: 429 (usage/session
+# limit) and 529 (overloaded).
+_RETRIABLE_HTTP_STATUS = frozenset({429, 529})
+
+# How many trailing stdout lines to keep for the text fallback.  The CLI
+# prints its terminal rate-limit shape (rate_limit_event / assistant /
+# result) in the last handful of lines, so a small bounded tail is enough
+# and keeps memory flat regardless of total output volume.
+_STDOUT_TAIL_LINES = 30
 
 # Stderr substrings that confirm a rate-limit exit when structured events
 # are unavailable (e.g. the process exits before emitting api_retry).
@@ -32,6 +48,21 @@ _RATE_LIMIT_STDERR_PATTERNS = (
     "temporarily limiting",
     "at capacity",
 )
+
+
+def _coerce_epoch(value: Any) -> float | None:
+    """Return ``value`` as a Unix-epoch float, or ``None`` if not numeric.
+
+    ``resetsAt`` arrives as an integer epoch (seconds) but is defended
+    against malformed/missing values so a bad payload never crashes the
+    launcher — it just falls back to the plain backoff schedule.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class ClaudeCLIError(Exception):
@@ -96,11 +127,14 @@ class ClaudeCLIProvider:
         conversation_started_emitted = False
         rate_limit_detected = False
         rate_limit_reason = "rate_limit"
+        resets_at: float | None = None
+        recent_lines: deque[str] = deque(maxlen=_STDOUT_TAIL_LINES)
 
         try:
             async with asyncio.timeout(timeout):
                 async for line in _iter_stdout_lines(proc.stdout):
                     await emit("agent.output", {"type": "agent.output", "line": line})
+                    recent_lines.append(line)
                     # Parse every JSON line. The stream-json format carries
                     # session_id on system/init (first line), api_retry, and
                     # result. Parsing every line lets us detect rate-limit
@@ -128,10 +162,20 @@ class ClaudeCLIProvider:
                             },
                         )
 
-                    # Detect rate-limit signal. system/api_retry carries the
-                    # error enum and session_id, even on the attempt that
-                    # ultimately exhausts retries.
-                    if obj.get("type") == "system" and obj.get("subtype") == "api_retry":
+                    # Detect the rate-limit signal across every shape the CLI
+                    # emits.  With CLAUDE_CODE_MAX_RETRIES=0 the CLI does NOT
+                    # emit system/api_retry — it surfaces a real usage/session
+                    # limit as a terminal stdout result (is_error + 429) plus a
+                    # rate_limit_event (status="rejected") and an assistant
+                    # message carrying error="rate_limit".  All of these are
+                    # parsed here so the limit is classified as retriable
+                    # (issue #62 follow-up); a stderr-only check missed them
+                    # because the CLI wrote nothing to stderr.
+                    obj_type = obj.get("type")
+
+                    if obj_type == "system" and obj.get("subtype") == "api_retry":
+                        # Legacy path: only fires when the CLI runs its own
+                        # internal retries (CLAUDE_CODE_MAX_RETRIES > 0).
                         error = obj.get("error", "rate_limit")
                         if error in _RETRIABLE_ERRORS:
                             rate_limit_detected = True
@@ -141,6 +185,30 @@ class ClaudeCLIProvider:
                             retry_sid = obj.get("session_id")
                             if retry_sid and isinstance(retry_sid, str):
                                 captured_id = retry_sid
+
+                    elif obj_type == "rate_limit_event":
+                        # Usage/session-limit signal. status="rejected" means
+                        # the request was refused and will reset at resetsAt.
+                        # An overage rejection (org_level_disabled) is still a
+                        # limit that resets — retriable, NOT a billing failure.
+                        info = obj.get("rate_limit_info") or {}
+                        if info.get("status") == "rejected":
+                            rate_limit_detected = True
+                            resets_at = _coerce_epoch(info.get("resetsAt"))
+
+                    elif obj_type == "result" and obj.get("is_error"):
+                        # Terminal result of a failed turn. A 429/529 status is
+                        # the authoritative transient-limit signal.
+                        if obj.get("api_error_status") in _RETRIABLE_HTTP_STATUS:
+                            rate_limit_detected = True
+
+                    elif obj_type == "assistant":
+                        # Synthetic assistant message the CLI emits when a turn
+                        # is rejected carries a top-level error enum.
+                        error = obj.get("error")
+                        if error in _RETRIABLE_ERRORS:
+                            rate_limit_detected = True
+                            rate_limit_reason = error
 
                 await proc.wait()
         except TimeoutError:
@@ -171,18 +239,28 @@ class ClaudeCLIProvider:
         stderr_text = stderr_raw.decode(errors="replace")
         stderr_tail = stderr_text[-2000:]
 
-        # Stderr pattern fallback: detect rate-limit even when no
-        # system/api_retry event appeared in stdout (e.g. process crashed
-        # before emitting the structured event).
+        # Text pattern fallback: detect rate-limit when the structured
+        # parse above did not fire (e.g. an unrecognised stream shape or a
+        # crash before the terminal events).  Scan BOTH stderr and the
+        # trailing stdout lines — a real session limit prints its text to
+        # stdout ("You've hit your session limit · resets …"), leaving
+        # stderr empty, which a stderr-only scan missed.
         if not rate_limit_detected:
-            lower = stderr_tail.lower()
-            if any(pat in lower for pat in _RATE_LIMIT_STDERR_PATTERNS):
+            haystack = "\n".join((*recent_lines, stderr_tail)).lower()
+            if any(pat in haystack for pat in _RATE_LIMIT_STDERR_PATTERNS):
                 rate_limit_detected = True
 
         if rate_limit_detected:
             # Do NOT emit session.error — the dispatcher will retry and
             # only emits task.failed after the ceiling is exhausted.
-            raise RateLimitError(captured_id=captured_id, reason=rate_limit_reason)
+            retry_after_floor_s = (
+                max(0.0, resets_at - time.time()) if resets_at is not None else None
+            )
+            raise RateLimitError(
+                captured_id=captured_id,
+                reason=rate_limit_reason,
+                retry_after_floor_s=retry_after_floor_s,
+            )
 
         scrubbed = _scrub(stderr_tail)
         await emit(
