@@ -5,6 +5,11 @@ Tests the runtime flow end-to-end through the Dispatcher + ScriptedLauncher:
 2. Resume task with stored id → launcher receives the id via ``conversation_id`` kwarg.
 3. Resume task with no stored id → ``agent.conversation_resume_skipped`` emitted,
    launcher called with ``conversation_id=None`` (fallback to new).
+4. Hook-based capture: launcher emits ``agent.claude_cli.hook.SessionStart`` →
+   ``on_emit`` captures ``data.session_id`` even when stdout returns ``None``
+   (simulates a run that times out before the ``result`` event).
+5. Auto-sync hook non-corruption: the auto-sync run's ``SessionStart`` hook must
+   NOT overwrite the primary run's captured conversation ID.
 
 State-based polling per heuristic 7 — no ``time.sleep + assert count``.
 Every loop has a deadline + outcome assertion.
@@ -24,6 +29,7 @@ import pytest
 
 from mad.adapters.outbound.events.in_memory_event_bus import InMemoryEventBus
 from mad.adapters.outbound.orchestration.projection import InMemoryTaskProjection
+from mad.core.events.domain.event import Event
 from mad.core.events.emitter import EventEmitter
 from mad.core.orchestration.use_cases.dispatcher import Dispatcher
 from mad.core.orchestration.use_cases.enqueue_task import (
@@ -74,11 +80,16 @@ async def _wait_for_event_type(
 
 
 class _Harness:
-    def __init__(self, sessions: dict[str, Session], launcher: ScriptedLauncher) -> None:
+    def __init__(
+        self,
+        sessions: dict[str, Session],
+        launcher: ScriptedLauncher,
+        on_emit: Callable[[Event], None] | None = None,
+    ) -> None:
         self.store = FakeEventStore()
         self.bus = InMemoryEventBus()
         self.projection = InMemoryTaskProjection()
-        self.emitter = EventEmitter(store=self.store, bus=self.bus)
+        self.emitter = EventEmitter(store=self.store, bus=self.bus, on_emit=on_emit)
         self.sessions = sessions
         self.launcher_factory: Callable[[str], Any] = lambda _name: launcher
         self.dispatcher = Dispatcher(
@@ -98,6 +109,25 @@ class _Harness:
 
     async def stop(self) -> None:
         await self.dispatcher.stop()
+
+
+def _make_session_start_on_emit(sessions: dict[str, Session]) -> Callable[[Event], None]:
+    """Return an ``on_emit`` callback that mirrors ``dependencies.touch_session``'s
+    hook-based capture: stores ``data.session_id`` from
+    ``agent.claude_cli.hook.SessionStart`` events on the matching session.
+    """
+
+    def _on_emit(event: Event) -> None:
+        session = sessions.get(event.session_id)
+        if (
+            session is not None
+            and event.type == "agent.claude_cli.hook.SessionStart"
+            and event.data is not None
+            and isinstance(event.data.get("session_id"), str)
+        ):
+            session.last_conversation_id = event.data["session_id"]
+
+    return _on_emit
 
 
 # -- Tests -----------------------------------------------------------------------
@@ -233,5 +263,106 @@ async def test_resume_with_no_stored_id_falls_back_and_emits_skipped(tmp_path: P
             if c[0] == "sesn_s" and c[1] == "agent.conversation_resume_skipped"
         )
         assert skipped[2]["reason"] == "no_conversation_id"
+    finally:
+        await h.stop()
+
+
+async def test_hook_session_start_captures_conversation_id(tmp_path: Path) -> None:
+    """When the launcher emits ``agent.claude_cli.hook.SessionStart`` mid-run,
+    the ``on_emit`` callback (mirroring ``dependencies.touch_session``) captures
+    ``data.session_id`` and stores it on ``session.last_conversation_id``.
+
+    The launcher returns ``None`` (simulating a timeout before the ``result``
+    event reaches stdout) to confirm that hook-based capture is the primary
+    mechanism — independent of stdout parsing.
+    """
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    launcher = ScriptedLauncher()
+    hook_session_id = "36849a9e-52bc-462c-8b02-18b879efa310"
+    sessions = {"sesn_h": _session("sesn_h", workspace)}
+
+    launcher.script_with_ids(
+        [
+            (
+                [
+                    {
+                        "type": "agent.claude_cli.hook.SessionStart",
+                        "session_id": hook_session_id,
+                        "hook_event_name": "SessionStart",
+                    },
+                    {"type": "session.status_idle", "stop_reason": "end_turn"},
+                ],
+                None,  # no stdout-captured ID — simulates timeout before result event
+            ),
+            ([{"type": "session.status_idle", "stop_reason": "end_turn"}], None),
+        ]
+    )
+
+    h = _Harness(sessions, launcher, on_emit=_make_session_start_on_emit(sessions))
+    await h.start()
+    try:
+        await h.enqueue.execute(
+            EnqueueTaskInput(session_id="sesn_h", content="do work", conversation_mode="new")
+        )
+        await _wait_for_event_type(h.store, session_id="sesn_h", event_type="task.completed")
+
+        assert sessions["sesn_h"].last_conversation_id == hook_session_id
+    finally:
+        await h.stop()
+
+
+async def test_autosync_hook_does_not_overwrite_primary_conversation_id(tmp_path: Path) -> None:
+    """The auto-sync run's ``SessionStart`` hook MUST NOT overwrite the primary
+    run's captured conversation ID.
+
+    ``_run_launcher`` snapshots ``session.last_conversation_id`` after the
+    primary run and restores it after the auto-sync run, so that even when
+    the auto-sync's hook fires and temporarily stores its own ID, the primary
+    ID is preserved for subsequent resume tasks.
+    """
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    launcher = ScriptedLauncher()
+    primary_id = "primary-conv-id"
+    autosync_id = "autosync-conv-id"
+    sessions = {"sesn_as": _session("sesn_as", workspace)}
+
+    launcher.script_with_ids(
+        [
+            (
+                [
+                    {
+                        "type": "agent.claude_cli.hook.SessionStart",
+                        "session_id": primary_id,
+                        "hook_event_name": "SessionStart",
+                    },
+                    {"type": "session.status_idle", "stop_reason": "end_turn"},
+                ],
+                None,
+            ),
+            (
+                [
+                    {
+                        "type": "agent.claude_cli.hook.SessionStart",
+                        "session_id": autosync_id,
+                        "hook_event_name": "SessionStart",
+                    },
+                    {"type": "session.status_idle", "stop_reason": "end_turn"},
+                ],
+                None,
+            ),
+        ]
+    )
+
+    h = _Harness(sessions, launcher, on_emit=_make_session_start_on_emit(sessions))
+    await h.start()
+    try:
+        await h.enqueue.execute(
+            EnqueueTaskInput(session_id="sesn_as", content="do work", conversation_mode="new")
+        )
+        await _wait_for_event_type(h.store, session_id="sesn_as", event_type="task.completed")
+
+        assert sessions["sesn_as"].last_conversation_id == primary_id
     finally:
         await h.stop()

@@ -174,6 +174,13 @@ async def _run_launcher(
             session.mark_error()
         primary_failure = exc
 
+    # Snapshot the primary run's conversation ID before the auto-sync run.
+    # The auto-sync run starts its own Claude subprocess which fires a
+    # SessionStart hook that, via on_emit, would overwrite
+    # session.last_conversation_id with the auto-sync's ID. Snapshotting
+    # here and restoring below preserves the primary conversation ID.
+    primary_conversation_id = session.last_conversation_id
+
     # Post-run auto-sync (issue #8): always launch a second agent run in
     # the same workspace with a fixed instruction prompt that decides
     # whether to branch / commit / push / open a PR. Mad does not
@@ -196,6 +203,10 @@ async def _run_launcher(
         )
         session.mark_error()
         auto_sync_failure = exc
+
+    # Restore the primary run's conversation ID — the auto-sync run's
+    # SessionStart hook may have overwritten it via on_emit.
+    session.last_conversation_id = primary_conversation_id
 
     if propagate_failures and primary_failure is not None:
         raise primary_failure
