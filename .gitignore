@@ -12,3 +12,10 @@ build/
 *.egg-info/
 .DS_Store
 hook-events/*
+
+# Docker / per-instance operator config (#66) — secrets and per-instance host
+# state never get committed; only the tracked templates do.
+.env
+.env.*
+!.env.example
+/instances/

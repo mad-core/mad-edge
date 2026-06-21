@@ -1,0 +1,84 @@
+# Mad — example compose template for ONE isolated instance.
+#
+# Quickstart:
+#   cp .env.example .env          # then edit .env (instance name, port, token…)
+#   docker compose -f compose.example.yml up -d --build
+#
+# Run a SECOND fully-isolated instance WITHOUT editing this file — point compose
+# at a different env-file and project name (each gets its own secrets, workspace
+# dir and port; see docs/docker.md):
+#   cp .env .env.beta             # set MAD_INSTANCE=beta, MAD_HOST_PORT=8081, …
+#   docker compose -f compose.example.yml --env-file .env.beta -p mad-beta up -d
+#
+# Token hygiene (CLAUDE.md hard rule 2): no secret lives in this file. The clone
+# token is delivered per-request and stripped from the remote; the GITHUB_TOKEN
+# below is the env token the launched agent uses to push / open PRs. Both arrive
+# at runtime via .env — never committed (see .gitignore / .dockerignore).
+
+services:
+  mad:
+    image: mad:${MAD_VERSION:-latest}
+    build:
+      context: .
+      args:
+        # Empty => install the latest published mad-bros. Pin (e.g. 0.5.11) to
+        # match the image tag to an exact Mad release.
+        MAD_VERSION: ${MAD_VERSION:-}
+        # Map the container user to the host operator so the bind-mounted
+        # workspace stays writable and host-owned. Default 1000:1000.
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-1000}
+    container_name: mad-${MAD_INSTANCE:-default}
+    restart: unless-stopped
+    # Injects the runtime secrets/tunables (GITHUB_TOKEN, MAD_* timeouts, …)
+    # into the container. Compose also auto-reads ./.env for ${...} interpolation
+    # of the build args and paths above.
+    env_file:
+      - .env
+    environment:
+      # Pinned to a constant in-container path (#64). The workspace bind mount
+      # below maps a DISTINCT host directory onto it per instance — that
+      # distinct host source is the isolation boundary, even though every
+      # container sees the same /workspaces path. `environment:` overrides any
+      # MAD_WORKSPACE_DIR in .env, so this contract can't be broken by accident.
+      MAD_WORKSPACE_DIR: /workspaces
+    ports:
+      - "${MAD_HOST_PORT:-8080}:8000"
+    volumes:
+      # Workspace — a NORMAL host directory you can inspect (cloned repos, agent
+      # output) instead of a Docker-managed named volume. The host path is
+      # derived from the instance name, so two instances never collide.
+      - ./instances/${MAD_INSTANCE:-default}/workspaces:/workspaces
+      # Claude Code Pro/Max login — persisted per instance across restarts.
+      # Log in once after first start:  docker compose exec mad claude
+      - ./instances/${MAD_INSTANCE:-default}/claude:/home/mad/.claude
+      # AWS credentials (read-only) — optional; delete this line if unused.
+      - ./instances/${MAD_INSTANCE:-default}/aws:/home/mad/.aws:ro
+
+  # --- second instance via copy-paste ---------------------------------------
+  # Alternative to the --env-file approach above: copy this block to run a
+  # second instance from THIS file. Note the different port and the distinct
+  # host bind-mount paths (a different instance name => a different host dir).
+  # Prefer the --env-file + -p approach when each instance needs separate
+  # secrets, since services in one file share this .env.
+  #
+  # mad-beta:
+  #   image: mad:${MAD_VERSION:-latest}
+  #   build:
+  #     context: .
+  #     args:
+  #       MAD_VERSION: ${MAD_VERSION:-}
+  #       PUID: ${PUID:-1000}
+  #       PGID: ${PGID:-1000}
+  #   container_name: mad-beta
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     MAD_WORKSPACE_DIR: /workspaces
+  #   ports:
+  #     - "8081:8000"
+  #   volumes:
+  #     - ./instances/beta/workspaces:/workspaces
+  #     - ./instances/beta/claude:/home/mad/.claude
+  #     - ./instances/beta/aws:/home/mad/.aws:ro

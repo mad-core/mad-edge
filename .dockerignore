@@ -1,0 +1,31 @@
+# The image installs `mad-bros` from PyPI and COPYies nothing from the build
+# context, so this context can stay tiny. These rules also guarantee no secret
+# or local host state is ever sent to the Docker daemon / baked into a layer
+# (CLAUDE.md hard rule 2).
+
+# Secrets & per-instance host state — must NEVER enter an image layer.
+.env
+.env.*
+instances/
+sessions/
+hook-events/
+
+# Local dev state / caches.
+.git
+.gitignore
+.venv
+venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+.pytest_cache
+.coverage
+dist
+build
+*.egg-info
+.DS_Store
+
+# Repo material not needed at runtime.
+tests/
+docs/
+*.md

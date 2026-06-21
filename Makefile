@@ -1,10 +1,11 @@
-.PHONY: help venv install lint format typecheck audit precommit test test-unit serve clean build release-dry
+.PHONY: help venv install lint format typecheck audit precommit test test-unit serve clean build release-dry docker-build docker-up docker-down docker-logs
 
 PY ?= python3
 VENV ?= venv
 BIN := $(VENV)/bin
 HOST ?= 0.0.0.0
 PORT ?= 8000
+COMPOSE ?= docker compose -f compose.example.yml
 
 help:
 	@echo "Mad — available targets:"
@@ -21,6 +22,10 @@ help:
 	@echo "  make clean     Remove caches, build artifacts, and sessions/"
 	@echo "  make build     Build sdist + wheel into dist/"
 	@echo "  make release-dry  Preview the next semantic-release version"
+	@echo "  make docker-build Build the Mad Docker image (compose.example.yml)"
+	@echo "  make docker-up    Build + start the instance detached"
+	@echo "  make docker-down  Stop and remove the instance (host data persists)"
+	@echo "  make docker-logs  Tail the running instance's logs"
 
 venv:
 	$(PY) -m venv $(VENV)
@@ -66,3 +71,15 @@ build:
 
 release-dry:
 	$(BIN)/semantic-release version --print
+
+docker-build:
+	$(COMPOSE) build
+
+docker-up:
+	$(COMPOSE) up -d --build
+
+docker-down:
+	$(COMPOSE) down
+
+docker-logs:
+	$(COMPOSE) logs -f
