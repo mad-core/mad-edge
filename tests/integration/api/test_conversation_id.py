@@ -15,7 +15,6 @@ in tests/integration/orchestration/test_conversation_id.py.
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 from mad.adapters.inbound.http import create_app
