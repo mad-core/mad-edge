@@ -50,6 +50,11 @@ class Session:
     # first; [1, 10]; 1 (lowest) when never set, so an explicitly
     # prioritized session always outranks an unprioritized one.
     priority: int = DEFAULT_PRIORITY
+    # Last conversation ID returned by the launcher after a successful run.
+    # None until a run captures one. Not persisted to JSONL in v1 — the event
+    # log carries agent.conversation_started which is the authoritative record;
+    # in-memory recovery across restarts is deferred (issue #63).
+    last_conversation_id: str | None = None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = _SENTINEL
 

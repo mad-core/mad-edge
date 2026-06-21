@@ -12,6 +12,7 @@ this use case is purely the *intake* of new tasks.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 from uuid import UUID, uuid4
 
 from mad.core.events.emitter import EventEmitter
@@ -26,6 +27,7 @@ class EnqueueTaskInput:
     content: str
     scheduled_for: str = "now"
     model: str | None = None
+    conversation_mode: Literal["new", "resume"] = "new"
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,7 @@ class EnqueueTaskUseCase:
                 "content": payload.content,
                 "scheduled_for": payload.scheduled_for,
                 "model": payload.model,
+                "conversation_mode": payload.conversation_mode,
             },
         )
         return EnqueueTaskOutput(

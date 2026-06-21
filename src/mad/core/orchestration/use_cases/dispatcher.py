@@ -298,6 +298,7 @@ class Dispatcher:
                 emitter=self._emitter,
                 propagate_failures=True,
                 model=effective_model,
+                conversation_mode=task.conversation_mode,
             )
         except Exception as exc:
             await self._emitter.emit(

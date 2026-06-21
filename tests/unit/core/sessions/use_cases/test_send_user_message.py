@@ -58,9 +58,10 @@ async def test_send_message_runs_launcher_and_redacts_tokens():
     bus = FakeEventBus()
 
     class ScriptedLauncher:
-        async def run(self, session_id, prompt, workspace, emit, model=None):
+        async def run(self, session_id, prompt, workspace, emit, model=None, conversation_id=None):
             await emit("agent.output", {"line": f"leak {token} bye"})
             await emit("session.status_idle", {"stop_reason": "end_turn"})
+            return None
 
     uc = _make_uc(sessions, lambda name: ScriptedLauncher(), repo, bus)
 
@@ -129,11 +130,12 @@ async def test_post_run_auto_sync_runs_even_when_primary_fails():
     calls: list[str] = []
 
     class FlakyLauncher:
-        async def run(self, session_id, prompt, workspace, emit, model=None):
+        async def run(self, session_id, prompt, workspace, emit, model=None, conversation_id=None):
             calls.append(prompt)
             if len(calls) == 1:
                 raise RuntimeError("primary boom")
             await emit("session.status_idle", {"stop_reason": "end_turn"})
+            return None
 
     uc = _make_uc(sessions, lambda name: FlakyLauncher(), repo, bus)
 
@@ -154,11 +156,11 @@ async def test_post_run_auto_sync_failure_emits_session_error():
     calls: list[int] = []
 
     class AutoSyncBoom:
-        async def run(self, session_id, prompt, workspace, emit, model=None):
+        async def run(self, session_id, prompt, workspace, emit, model=None, conversation_id=None):
             calls.append(1)
             if len(calls) == 1:
                 await emit("session.status_idle", {"stop_reason": "end_turn"})
-                return
+                return None
             raise RuntimeError("sync boom")
 
     uc = _make_uc(sessions, lambda name: AutoSyncBoom(), repo, bus)
@@ -182,7 +184,7 @@ async def test_send_message_records_session_error_when_launcher_raises():
     bus = FakeEventBus()
 
     class BoomLauncher:
-        async def run(self, session_id, prompt, workspace, emit, model=None):
+        async def run(self, session_id, prompt, workspace, emit, model=None, conversation_id=None):
             raise RuntimeError("kaboom")
 
     uc = _make_uc(sessions, lambda name: BoomLauncher(), repo, bus)
@@ -210,9 +212,10 @@ async def test_publishes_every_appended_event_to_the_event_bus():
     bus = FakeEventBus()
 
     class ScriptedLauncher:
-        async def run(self, session_id, prompt, workspace, emit, model=None):
+        async def run(self, session_id, prompt, workspace, emit, model=None, conversation_id=None):
             await emit("agent.output", {"line": "hi"})
             await emit("session.status_idle", {"stop_reason": "end_turn"})
+            return None
 
     uc = _make_uc(sessions, lambda name: ScriptedLauncher(), repo, bus)
 

@@ -24,6 +24,7 @@ class GetSessionOutput:
     priority: int
     created_at: datetime
     updated_at: datetime
+    last_conversation_id: str | None = None
 
 
 class GetSessionUseCase:
@@ -55,4 +56,5 @@ class GetSessionUseCase:
             priority=session.priority,
             created_at=session.created_at,
             updated_at=session.updated_at,
+            last_conversation_id=session.last_conversation_id,
         )

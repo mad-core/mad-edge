@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 
@@ -36,3 +37,4 @@ class Task:
     scheduled_for: str
     created_at: datetime
     model: str | None = None
+    conversation_mode: Literal["new", "resume"] = "new"

@@ -37,7 +37,7 @@ from mad.core.orchestration.use_cases.enqueue_task import (
 )
 from mad.core.sessions.domain.entities.session import Session
 from support.events import FakeEventStore
-from support.launchers import ScriptedLauncher
+from support.launchers import RaisingLauncher, ScriptedLauncher
 
 _DEADLINE_S = 5.0
 
@@ -201,19 +201,8 @@ async def test_launcher_exception_emits_task_failed(tmp_path: Path) -> None:
     workspace.mkdir()
     sessions = {"sesn_a": _session("sesn_a", workspace)}
 
-    class BoomLauncher:
-        async def run(
-            self,
-            session_id: str,
-            prompt: str,
-            workspace: Path,
-            emit: Callable[..., Any],
-            model: str | None = None,
-        ) -> None:
-            raise RuntimeError("launcher boom")
-
-    launcher = BoomLauncher()
-    h = _Harness(sessions, launcher)  # type: ignore[arg-type]
+    launcher = RaisingLauncher(RuntimeError("launcher boom"))
+    h = _Harness(sessions, launcher)
     h.launcher_factory = lambda _name: launcher
     h.dispatcher = Dispatcher(
         projection=h.projection,

@@ -82,6 +82,8 @@ class InMemoryTaskProjection:
 
     def _on_queued(self, event: Event) -> None:
         task_id = UUID(event.data["task_id"])
+        raw_mode = event.data.get("conversation_mode", "new")
+        conversation_mode = raw_mode if raw_mode in ("new", "resume") else "new"
         task = Task(
             task_id=task_id,
             session_id=event.session_id,
@@ -89,6 +91,7 @@ class InMemoryTaskProjection:
             scheduled_for=event.data["scheduled_for"],
             created_at=event.timestamp,
             model=event.data.get("model"),
+            conversation_mode=conversation_mode,
         )
         self._queued[event.session_id].append(task)
 

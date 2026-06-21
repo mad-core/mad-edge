@@ -103,6 +103,7 @@ async def _run_launcher(
     emitter: EventEmitter,
     propagate_failures: bool = False,
     model: str | None = None,
+    conversation_mode: str = "new",
 ) -> None:
     """Internal coroutine: run the launcher and handle lifecycle events.
 
@@ -115,6 +116,12 @@ async def _run_launcher(
 
     ``model`` is the resolved effective model to forward to the launcher.
     ``None`` means omit ``--model`` and use the provider's own default.
+
+    ``conversation_mode`` controls whether to start a fresh conversation
+    (``"new"``, default) or continue a previous one (``"resume"``).
+    When resuming, ``session.last_conversation_id`` is passed to the
+    launcher.  If no ID is stored yet, falls back to ``"new"`` and emits
+    ``agent.conversation_resume_skipped``.
     """
     await emitter.emit(session_id, "session.status_running")
     session.mark_running()
@@ -123,6 +130,19 @@ async def _run_launcher(
 
     launcher = get_launcher(session.agent["provider"])
     workspace = Path(session.working_directory or session.workspace)
+
+    # Resolve resume ID before the run starts.
+    resume_id: str | None = None
+    if conversation_mode == "resume":
+        if session.last_conversation_id is not None:
+            resume_id = session.last_conversation_id
+        else:
+            await emitter.emit(
+                session_id,
+                "agent.conversation_resume_skipped",
+                {"reason": "no_conversation_id"},
+            )
+            # Fall back to a fresh conversation.
 
     async def emit(event_type: str, data: dict[str, Any] | None = None) -> None:
         redacted_data = (
@@ -138,13 +158,16 @@ async def _run_launcher(
 
     primary_failure: Exception | None = None
     try:
-        await launcher.run(
+        captured_id = await launcher.run(
             session_id=session_id,
             prompt=prompt,
             workspace=workspace,
             emit=emit,
             model=model,
+            conversation_id=resume_id,
         )
+        if captured_id is not None:
+            session.last_conversation_id = captured_id
     except Exception as exc:
         if session.status == "running":
             await emitter.emit(session_id, "session.error", {"error": str(exc)})
