@@ -194,8 +194,7 @@ async def test_new_task_emits_agent_conversation_started(tmp_path: Path) -> None
         await _wait_for_event_type(h.store, session_id="sesn_b", event_type="task.completed")
 
         conv_events = [
-            c for c in h.store.calls
-            if c[0] == "sesn_b" and c[1] == "agent.conversation_started"
+            c for c in h.store.calls if c[0] == "sesn_b" and c[1] == "agent.conversation_started"
         ]
         assert len(conv_events) == 1
         assert conv_events[0][2]["conversation_id"] == conversation_id
@@ -257,7 +256,8 @@ async def test_resume_with_no_stored_id_falls_back_and_emits_skipped(tmp_path: P
         assert launcher.calls[0]["conversation_id"] is None
         # Skipped event must carry reason.
         skipped = next(
-            c for c in h.store.calls
+            c
+            for c in h.store.calls
             if c[0] == "sesn_s" and c[1] == "agent.conversation_resume_skipped"
         )
         assert skipped[2]["reason"] == "no_conversation_id"

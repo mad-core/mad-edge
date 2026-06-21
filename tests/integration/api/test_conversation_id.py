@@ -45,9 +45,7 @@ def test_get_session_exposes_last_conversation_id_null_by_default(
 # -- POST /v1/sessions/{id}/tasks contract tests --------------------------------
 
 
-def test_enqueue_task_with_mode_new_is_accepted(
-    client: TestClient, session_payload: dict
-) -> None:
+def test_enqueue_task_with_mode_new_is_accepted(client: TestClient, session_payload: dict) -> None:
     session_id = _session_id(client, session_payload)
 
     r = client.post(
@@ -58,6 +56,7 @@ def test_enqueue_task_with_mode_new_is_accepted(
     assert r.status_code == 202, r.text
     body = r.json()
     from uuid import UUID
+
     assert UUID(body["task_id"])  # value-level: valid UUID, not just key present
 
 
