@@ -162,3 +162,41 @@ def test_filter_by_session_ids_for_agent(
     )
 
     assert [e.session_id for e in events] == ["sesn_a"]
+
+
+def test_query_inherits_mad_sessions_dir_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A query constructed with no explicit dir reads from the directory
+    named by ``MAD_SESSIONS_DIR`` (#13), the same source the writer uses."""
+    override = tmp_path / "relocated"
+    override.mkdir()
+    monkeypatch.setenv("MAD_SESSIONS_DIR", str(override))
+
+    JsonlSessionRepository().append_event("sesn_x", "session.created", {"agent": "claude_cli"})
+
+    events = JsonlEventLogQuery().query(EventQuery())
+
+    assert [e.session_id for e in events] == ["sesn_x"]
+
+
+def test_query_reads_only_the_directory_named_by_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Negative twin: events written under one directory are invisible once
+    ``MAD_SESSIONS_DIR`` is repointed at a different (empty) directory — the
+    query follows the current override, never a stale or default location."""
+    written_to = tmp_path / "first"
+    written_to.mkdir()
+    monkeypatch.setenv("MAD_SESSIONS_DIR", str(written_to))
+    JsonlSessionRepository().append_event("sesn_x", "session.created", {"agent": "claude_cli"})
+
+    # Repoint resolution at a fresh, empty directory: the earlier log lives
+    # under ``first`` and must NOT leak into a query rooted at ``second``.
+    second = tmp_path / "second"
+    second.mkdir()
+    monkeypatch.setenv("MAD_SESSIONS_DIR", str(second))
+
+    events = JsonlEventLogQuery().query(EventQuery())
+
+    assert events == []

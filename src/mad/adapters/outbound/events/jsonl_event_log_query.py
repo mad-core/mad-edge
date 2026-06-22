@@ -31,11 +31,12 @@ class JsonlEventLogQuery:
 
     @property
     def _sessions_dir(self) -> Path:
-        # Read SESSIONS_DIR lazily so tests that monkeypatch it after
-        # construction (via tmp_sessions_dir) still take effect.
+        # Resolve the directory lazily through the same dynamic resolver the
+        # writer uses, so a ``MAD_SESSIONS_DIR`` override (or a test that sets
+        # it) is honored at query time rather than frozen at construction.
         if self._explicit_sessions_dir is not None:
             return self._explicit_sessions_dir
-        return _persistence.SESSIONS_DIR
+        return _persistence.sessions_dir()
 
     def query(self, q: EventQuery) -> list[Event]:
         events = [e for e in self._all_events() if _matches(e, q)]
