@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -14,7 +15,11 @@ from mad.adapters.inbound.http.routes.providers import router as providers_route
 from mad.adapters.inbound.http.routes.sessions import router as sessions_router
 from mad.adapters.outbound.agents import factory
 from mad.adapters.outbound.orchestration.projection import InMemoryTaskProjection
-from mad.adapters.outbound.persistence.jsonl_session_repository import ensure_sessions_dir
+from mad.adapters.outbound.persistence.jsonl_session_repository import (
+    ensure_sessions_dir,
+    purge_expired_logs,
+    resolve_retention_days,
+)
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_bus import EventBus
 from mad.core.events.ports.event_log_query import EventLogQuery
@@ -174,6 +179,12 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         ensure_sessions_dir()
+        # Enforce the optional JSONL log retention TTL at startup (issue #14).
+        # Unset / non-positive MAD_SESSIONS_RETENTION_DAYS -> None -> disabled,
+        # which preserves the historical never-purge behavior (safe default).
+        retention_days = resolve_retention_days()
+        if retention_days is not None:
+            purge_expired_logs(datetime.now(UTC), retention_days)
         # Bootstrap the orchestration projection from the persisted log
         # before the dispatcher's orphan recovery runs (ADR-0009 Decision 5).
         final_projection.bootstrap_from_log(final_event_log_query)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +14,8 @@ SESSIONS_DIR_ENV = "MAD_SESSIONS_DIR"
 
 #: Fallback used when ``MAD_SESSIONS_DIR`` is unset (local dev unchanged).
 DEFAULT_SESSIONS_DIR = Path("sessions")
+
+RETENTION_DAYS_ENV = "MAD_SESSIONS_RETENTION_DAYS"
 
 # ---------------------------------------------------------------------------
 # Free functions (module-level API)
@@ -75,6 +77,88 @@ def get_events(session_id: str) -> list[dict]:
         if ln:
             events.append(json.loads(ln))
     return events
+
+
+def resolve_retention_days() -> int | None:
+    """Read the configured JSONL log retention window from the environment.
+
+    Returns the positive number of days an operator set via
+    ``MAD_SESSIONS_RETENTION_DAYS``. Unset, non-integer, zero, or negative
+    values all resolve to ``None``, which the caller treats as "retention
+    disabled — keep every log forever" (the safe default; no behavior change
+    over the historical never-purge contract, issue #14).
+    """
+    raw = os.environ.get(RETENTION_DAYS_ENV)
+    if raw is None:
+        return None
+    try:
+        days = int(raw)
+    except ValueError:
+        return None
+    return days if days > 0 else None
+
+
+def _last_event_timestamp(path: Path) -> datetime | None:
+    """Return the parsed ``timestamp`` of the LAST event in a JSONL log.
+
+    A log with no parseable timestamped event returns ``None`` so the caller
+    keeps it (a half-written or empty file is never old enough to purge).
+    """
+    last: datetime | None = None
+    for ln in path.read_text().splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            raw = json.loads(ln).get("timestamp")
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(raw, str):
+            continue
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            continue
+        last = parsed
+    return last
+
+
+def purge_expired_logs(now: datetime, retention_days: int) -> list[str]:
+    """Delete per-session JSONL logs whose LAST event predates the cutoff.
+
+    A log is purged when its most-recent event ``timestamp`` is strictly
+    older than ``now - retention_days``. The last event is used (not the
+    first) so an actively-appended log is never deleted out from under a
+    live session — the cutoff tracks the most recent activity (issue #14).
+
+    ``retention_days <= 0`` is a no-op (returns ``[]``): callers gate on
+    :func:`resolve_retention_days` returning ``None`` to disable purging,
+    but this guard keeps the primitive safe if called directly.
+
+    Reserved internal streams (ids starting with ``__``, e.g. the
+    deployment-wide policy log) are never purged — they mirror the exclusion
+    in :meth:`JsonlSessionRepository.list_session_ids`.
+
+    Returns the session ids whose logs were deleted.
+    """
+    if retention_days <= 0:
+        return []
+    root = sessions_dir()
+    if not root.exists():
+        return []
+
+    cutoff = now - timedelta(days=retention_days)
+    purged: list[str] = []
+    for path in sorted(root.glob("*.jsonl")):
+        if path.stem.startswith("__"):
+            continue
+        last = _last_event_timestamp(path)
+        if last is None:
+            continue
+        if last < cutoff:
+            path.unlink()
+            purged.append(path.stem)
+    return purged
 
 
 class JsonlSessionRepository:

@@ -22,6 +22,7 @@ Early days — `0.x`. Single launcher provider (`claude_cli`); HTTP + SSE surfac
 - A GitHub token with `repo` scope for cloning private repos (passed per-request, never persisted — see hard rule 2)
 - Session workspaces are created under `~/mad` by default. Override the base directory with `MAD_WORKSPACE_DIR` (used verbatim — no `~`/`$VAR` expansion) when you need a larger or persistent disk; resolution is `MAD_WORKSPACE_DIR` → `~/mad` → the system temp dir (last resort, only if the home directory cannot be resolved). The base is created on first use.
 - Session JSONL logs (the source of truth, hard rule 6) are written under `./sessions` by default. Override the directory with `MAD_SESSIONS_DIR` (used verbatim — no `~`/`$VAR` expansion) when you need a persistent or shared disk; an unset or blank value falls back to `./sessions`. The directory is created on first write.
+- Per-session JSONL event logs (`sessions/`) are kept forever by default. Set `MAD_SESSIONS_RETENTION_DAYS` to a positive integer to enable TTL retention: at startup Mad purges any session log whose **last** event is older than that many days. Unset, `0`, or a negative/non-integer value disables purging (keep forever — the safe default, no behavior change).
 
 ## Install
 
