@@ -93,14 +93,15 @@ def session_payload(bare_repo: Path) -> dict:
 
 @pytest.fixture
 def tmp_sessions_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Monkeypatch SESSIONS_DIR to a tmp_path subdirectory.
+    """Point the session log directory at a ``tmp_path`` subdirectory.
 
-    Patches the adapter module (canonical location) so all persistence code
-    writes to the tmp directory instead of the CWD-relative 'sessions/' dir.
+    Drives the public ``MAD_SESSIONS_DIR`` env var (the same knob an operator
+    sets in production) so all persistence code resolves to the tmp directory
+    instead of the CWD-relative ``sessions/`` dir.
     """
     sessions = tmp_path / "sessions"
     sessions.mkdir()
-    monkeypatch.setattr(_adapter_log, "SESSIONS_DIR", sessions)
+    monkeypatch.setenv(_adapter_log.SESSIONS_DIR_ENV, str(sessions))
     return sessions
 
 

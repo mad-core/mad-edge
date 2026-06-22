@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -8,19 +9,38 @@ from typing import Any
 from mad.core.events.domain.event import Event, event_from_persisted
 from mad.core.events.domain.event_id import new_event_id
 
-SESSIONS_DIR = Path("sessions")
+#: Environment variable an operator sets to relocate the session log directory.
+SESSIONS_DIR_ENV = "MAD_SESSIONS_DIR"
+
+#: Fallback used when ``MAD_SESSIONS_DIR`` is unset (local dev unchanged).
+DEFAULT_SESSIONS_DIR = Path("sessions")
 
 # ---------------------------------------------------------------------------
 # Free functions (module-level API)
 # ---------------------------------------------------------------------------
 
 
+def sessions_dir() -> Path:
+    """Resolve the session log directory dynamically.
+
+    Reads ``MAD_SESSIONS_DIR`` from the environment on every call so an
+    operator override is honored at runtime (and tests can override it),
+    falling back to ``Path("sessions")`` when the variable is unset or
+    blank. This is intentionally a function, not a module-import-time
+    constant: importing the module must not freeze the resolution.
+    """
+    override = os.environ.get(SESSIONS_DIR_ENV, "").strip()
+    if override:
+        return Path(override)
+    return DEFAULT_SESSIONS_DIR
+
+
 def ensure_sessions_dir() -> None:
-    SESSIONS_DIR.mkdir(exist_ok=True)
+    sessions_dir().mkdir(parents=True, exist_ok=True)
 
 
 def log_path(session_id: str) -> Path:
-    return SESSIONS_DIR / f"{session_id}.jsonl"
+    return sessions_dir() / f"{session_id}.jsonl"
 
 
 def emit(session_id: str, event_type: str, data: dict[str, Any] | None = None) -> dict:
@@ -98,6 +118,7 @@ class JsonlSessionRepository:
         deployment-wide dispatch-policy log from issue #45) are NOT real
         sessions and are excluded so they never get rehydrated or listed.
         """
-        if not SESSIONS_DIR.exists():
+        root = sessions_dir()
+        if not root.exists():
             return []
-        return sorted(p.stem for p in SESSIONS_DIR.glob("*.jsonl") if not p.stem.startswith("__"))
+        return sorted(p.stem for p in root.glob("*.jsonl") if not p.stem.startswith("__"))
