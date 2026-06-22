@@ -22,14 +22,20 @@ from mad.core.orchestration.domain.timeout_config import DEFAULT_AGENT_TIMEOUT_S
 
 # Errors the CLI reports (in system/api_retry events, in the top-level
 # ``error`` of an assistant message, or anywhere else in the stream) that
-# are transient and retriable.  ``billing_error`` / ``authentication_failed``
-# are deliberately absent — those are terminal and must drain to session.error.
-_RETRIABLE_ERRORS = frozenset({"rate_limit", "overloaded"})
+# are transient and retriable.  ``billing_error`` stays absent — a real
+# auth/billing failure is terminal and must drain to session.error.
+# ``authentication_failed`` IS retriable: a single-request ``401`` is almost
+# always a transient blip (issue #72) — the same credentials succeed seconds
+# later — so it rides the existing #62 backoff + conversation-resume path
+# instead of draining the queue.  A genuine credential problem surfaces as a
+# persistent failure and is exhausted by the dispatcher's cumulative ceiling.
+_RETRIABLE_ERRORS = frozenset({"rate_limit", "overloaded", "authentication_failed"})
 
 # HTTP statuses the CLI reports on a terminal ``result`` event that mean
-# "transient upstream limit" rather than a real failure: 429 (usage/session
-# limit) and 529 (overloaded).
-_RETRIABLE_HTTP_STATUS = frozenset({429, 529})
+# "transient upstream signal to back off and retry" rather than a real
+# failure: 429 (usage/session limit), 529 (overloaded), and 401 (transient
+# authentication_failed — issue #72).
+_RETRIABLE_HTTP_STATUS = frozenset({429, 529, 401})
 
 # How many trailing stdout lines to keep for the text fallback.  The CLI
 # prints its terminal rate-limit shape (rate_limit_event / assistant /
@@ -137,6 +143,14 @@ class ClaudeCLIProvider:
         rate_limit_reason = "rate_limit"
         resets_at: float | None = None
         recent_lines: deque[str] = deque(maxlen=_STDOUT_TAIL_LINES)
+        # Diagnostic detail carried out of the stream so a terminal
+        # session.error is self-describing (issue #72): the actual error
+        # string / HTTP status / request_id otherwise live only in the raw
+        # agent.output log.  Populated from the last assistant error and the
+        # terminal result; emptied keys are dropped before emitting.
+        last_error: str | None = None
+        last_api_error_status: int | None = None
+        last_request_id: str | None = None
 
         try:
             async with asyncio.timeout(timeout):
@@ -205,15 +219,33 @@ class ClaudeCLIProvider:
                             resets_at = _coerce_epoch(info.get("resetsAt"))
 
                     elif obj_type == "result" and obj.get("is_error"):
-                        # Terminal result of a failed turn. A 429/529 status is
-                        # the authoritative transient-limit signal.
-                        if obj.get("api_error_status") in _RETRIABLE_HTTP_STATUS:
+                        # Terminal result of a failed turn. A 429/529/401 status
+                        # is the authoritative transient signal (issue #72 adds
+                        # 401).  Capture the diagnostic detail so a terminal
+                        # session.error is self-describing rather than empty.
+                        status = obj.get("api_error_status")
+                        if isinstance(status, int):
+                            last_api_error_status = status
+                        result_text = obj.get("result")
+                        if isinstance(result_text, str) and result_text:
+                            last_error = result_text
+                        if status in _RETRIABLE_HTTP_STATUS:
                             rate_limit_detected = True
+                            # A transient 401 resumes under the auth-failed
+                            # reason; 429/529 keep the rate-limit reason already
+                            # set (default or from an earlier assistant/api_retry).
+                            if status == 401:
+                                rate_limit_reason = "authentication_failed"
 
                     elif obj_type == "assistant":
                         # Synthetic assistant message the CLI emits when a turn
                         # is rejected carries a top-level error enum.
                         error = obj.get("error")
+                        if isinstance(error, str) and error:
+                            last_error = error
+                        request_id = obj.get("request_id")
+                        if isinstance(request_id, str) and request_id:
+                            last_request_id = request_id
                         if error in _RETRIABLE_ERRORS:
                             rate_limit_detected = True
                             rate_limit_reason = error
@@ -270,13 +302,21 @@ class ClaudeCLIProvider:
                 retry_after_floor_s=retry_after_floor_s,
             )
 
+        # Prefer the structured error string from the stream (issue #72): a
+        # terminal failure (e.g. a persistent 401/500) often leaves stderr
+        # empty, so the scrubbed stderr would be "" — emitting the captured
+        # ``result``/assistant error keeps session.error diagnosable.  Fall
+        # back to scrubbed stderr when no structured error was seen.
         scrubbed = _scrub(stderr_tail)
-        await emit(
-            "session.error",
-            {
-                "type": "session.error",
-                "error": scrubbed,
-                "exit_code": proc.returncode,
-            },
-        )
+        error_detail = scrubbed or (_scrub(last_error) if last_error else "")
+        error_data: dict[str, Any] = {
+            "type": "session.error",
+            "error": error_detail,
+            "exit_code": proc.returncode,
+        }
+        if last_api_error_status is not None:
+            error_data["api_error_status"] = last_api_error_status
+        if last_request_id is not None:
+            error_data["request_id"] = last_request_id
+        await emit("session.error", error_data)
         return captured_id

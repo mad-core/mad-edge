@@ -581,6 +581,219 @@ async def test_claude_cli_rate_limit_without_resets_at_has_no_floor(
     )
 
 
+# ---------------------------------------------------------------------------
+# Issue #72: a transient single-request 401 (authentication_failed) is NOT a
+# real credential failure — the same OAuth token succeeds seconds later. It
+# must ride the #62 backoff + conversation-resume path (RateLimitError) rather
+# than draining the queue as a terminal session.error. ``billing_error`` stays
+# terminal. session.error also carries the structured error/status/request_id
+# instead of an empty string.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_transient_401_result_raises_rate_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A terminal result with api_error_status=401 (transient authentication_failed)
+    raises RateLimitError with reason='authentication_failed', captures the
+    conversation ID for resume, and emits NO session.error — so the dispatcher's
+    #62 retry loop absorbs the blip instead of draining the queue."""
+    fake_bin = _make_executable_script(
+        tmp_path / "fake_claude",
+        """\
+        import sys, json
+        print(json.dumps({"type": "system", "subtype": "init", "session_id": "conv-401"}))
+        print(json.dumps({"type": "assistant", "error": "authentication_failed",
+            "request_id": "req_011CcGVY", "message": {"content": [
+            {"type": "text", "text": "Failed to authenticate. API Error: 401"}]}}))
+        print(json.dumps({"type": "result", "subtype": "success", "is_error": True,
+            "api_error_status": 401, "result": "Failed to authenticate. API Error: 401"}))
+        sys.exit(1)
+        """,
+    )
+    monkeypatch.setenv("MAD_CLAUDE_CLI_BIN", str(fake_bin))
+
+    launcher = ClaudeCLIProvider()
+    captured_events: list[dict] = []
+
+    async def capture(event_type: str, event: dict) -> None:
+        captured_events.append(event)
+
+    with pytest.raises(RateLimitError) as excinfo:
+        await launcher.run(session_id="s1", prompt="x", workspace=tmp_path, emit=capture)
+
+    assert excinfo.value.reason == "authentication_failed", (
+        f"Expected reason='authentication_failed', got: {excinfo.value.reason!r}"
+    )
+    assert excinfo.value.captured_id == "conv-401", (
+        f"Expected captured_id from system/init for resume, got: {excinfo.value.captured_id!r}"
+    )
+    error_events = [e for e in captured_events if e.get("type") == "session.error"]
+    assert len(error_events) == 0, (
+        f"session.error must NOT be emitted for a transient 401, got: {error_events}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_transient_401_assistant_error_raises_rate_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Even without a terminal result event, an assistant message carrying
+    error='authentication_failed' is enough to classify the turn as a transient
+    401 — RateLimitError, no session.error."""
+    fake_bin = _make_executable_script(
+        tmp_path / "fake_claude",
+        """\
+        import sys, json
+        print(json.dumps({"type": "assistant", "error": "authentication_failed",
+            "message": {"model": "<synthetic>"}}))
+        sys.exit(1)
+        """,
+    )
+    monkeypatch.setenv("MAD_CLAUDE_CLI_BIN", str(fake_bin))
+
+    launcher = ClaudeCLIProvider()
+    captured_events: list[dict] = []
+
+    async def capture(event_type: str, event: dict) -> None:
+        captured_events.append(event)
+
+    with pytest.raises(RateLimitError) as excinfo:
+        await launcher.run(session_id="s1", prompt="x", workspace=tmp_path, emit=capture)
+
+    assert excinfo.value.reason == "authentication_failed", (
+        f"Expected reason='authentication_failed', got: {excinfo.value.reason!r}"
+    )
+    error_events = [e for e in captured_events if e.get("type") == "session.error"]
+    assert len(error_events) == 0, (
+        f"session.error must NOT be emitted for a transient 401, got: {error_events}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_structured_billing_error_emits_session_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Negative twin: a structured billing_error in the stream stays terminal —
+    session.error emitted (NOT RateLimitError). Unlike a transient 401, a real
+    billing failure must not be retried into the dispatcher's ceiling."""
+    fake_bin = _make_executable_script(
+        tmp_path / "fake_claude",
+        """\
+        import sys, json
+        print(json.dumps({"type": "assistant", "error": "billing_error",
+            "message": {"model": "<synthetic>"}}))
+        print(json.dumps({"type": "result", "subtype": "success", "is_error": True,
+            "api_error_status": 402, "result": "billing_error - payment required"}))
+        sys.exit(1)
+        """,
+    )
+    monkeypatch.setenv("MAD_CLAUDE_CLI_BIN", str(fake_bin))
+
+    launcher = ClaudeCLIProvider()
+    captured_events: list[dict] = []
+
+    async def capture(event_type: str, event: dict) -> None:
+        captured_events.append(event)
+
+    # Must NOT raise — billing is non-retriable, even arriving structured.
+    await launcher.run(session_id="s1", prompt="x", workspace=tmp_path, emit=capture)
+
+    error_events = [e for e in captured_events if e.get("type") == "session.error"]
+    assert len(error_events) == 1, (
+        f"Expected one session.error for billing_error (non-retriable), got: {captured_events}"
+    )
+    assert error_events[-1].get("exit_code") == 1, (
+        f"session.error must carry exit_code=1, got: {error_events[-1]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_session_error_carries_structured_detail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A terminal failure populates session.error.data from the last result:
+    a non-empty error string plus api_error_status and request_id — diagnosable
+    without scraping the agent.output log (issue #72 observability)."""
+    fake_bin = _make_executable_script(
+        tmp_path / "fake_claude",
+        """\
+        import sys, json
+        print(json.dumps({"type": "assistant", "error": "api_error",
+            "request_id": "req_diag123", "message": {"model": "<synthetic>"}}))
+        print(json.dumps({"type": "result", "subtype": "success", "is_error": True,
+            "api_error_status": 500, "result": "internal server error"}))
+        sys.exit(1)
+        """,
+    )
+    monkeypatch.setenv("MAD_CLAUDE_CLI_BIN", str(fake_bin))
+
+    launcher = ClaudeCLIProvider()
+    captured_events: list[dict] = []
+
+    async def capture(event_type: str, event: dict) -> None:
+        captured_events.append(event)
+
+    await launcher.run(session_id="s1", prompt="x", workspace=tmp_path, emit=capture)
+
+    error_events = [e for e in captured_events if e.get("type") == "session.error"]
+    assert len(error_events) == 1, (
+        f"Expected one session.error for a 500 failure, got: {captured_events}"
+    )
+    payload = error_events[-1]
+    assert payload["error"] == "internal server error", (
+        f"session.error.error must carry the structured result, got: {payload.get('error')!r}"
+    )
+    assert payload["api_error_status"] == 500, (
+        f"session.error must carry api_error_status=500, got: {payload.get('api_error_status')!r}"
+    )
+    assert payload["request_id"] == "req_diag123", (
+        f"session.error must carry request_id, got: {payload.get('request_id')!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_claude_cli_session_error_omits_detail_keys_when_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Negative twin for the structured detail: a plain stderr failure with no
+    structured stream events falls back to the scrubbed stderr string and does
+    NOT invent api_error_status / request_id keys."""
+    fake_bin = _make_executable_script(
+        tmp_path / "fake_claude",
+        """\
+        import sys
+        print("boom: something broke", file=sys.stderr)
+        sys.exit(1)
+        """,
+    )
+    monkeypatch.setenv("MAD_CLAUDE_CLI_BIN", str(fake_bin))
+
+    launcher = ClaudeCLIProvider()
+    captured_events: list[dict] = []
+
+    async def capture(event_type: str, event: dict) -> None:
+        captured_events.append(event)
+
+    await launcher.run(session_id="s1", prompt="x", workspace=tmp_path, emit=capture)
+
+    error_events = [e for e in captured_events if e.get("type") == "session.error"]
+    assert len(error_events) == 1, (
+        f"Expected one session.error for a plain stderr failure, got: {captured_events}"
+    )
+    payload = error_events[-1]
+    assert "boom: something broke" in payload["error"], (
+        f"session.error.error must fall back to scrubbed stderr, got: {payload.get('error')!r}"
+    )
+    assert "api_error_status" not in payload, (
+        f"api_error_status must be absent when no structured status was seen, got: {payload}"
+    )
+    assert "request_id" not in payload, (
+        f"request_id must be absent when no structured request_id was seen, got: {payload}"
+    )
+
+
 @pytest.mark.asyncio
 async def test_claude_cli_sets_max_retries_env_zero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
