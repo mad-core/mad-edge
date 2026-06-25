@@ -14,7 +14,7 @@ name: TestPyPI preview
 #   1. Create an account on https://test.pypi.org.
 #   2. Register a Trusted Publisher (a "pending publisher") for project
 #      `mad-bros` at https://test.pypi.org/manage/account/publishing/ with:
-#        Owner: jlsaco   Repository: mad
+#        Owner: mad-core   Repository: mad
 #        Workflow name: testpypi-preview.yml   Environment: testpypi
 #   3. Create a GitHub Environment named `testpypi`
 #      (repo Settings → Environments → New environment).
