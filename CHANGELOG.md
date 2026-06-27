@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.5.22 (2026-06-27)
+
+### Features
+
+- **sse**: Emit task.git_result event after a task completes
+  ([`357e2cf`](https://github.com/mad-core/mad/commit/357e2cf22c702d17dc7abe7fba0f4cf2827e699f))
+
+
 ## v0.5.21 (2026-06-27)
 
 ### Features
