@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.5.23 (2026-06-27)
+
+### Features
+
+- **http**: Add per-task effort with task > session > deployment precedence
+  ([`aef916b`](https://github.com/mad-core/mad/commit/aef916b42bcaeda257f7b636d1fba25773bc622f))
+
+
 ## v0.5.22 (2026-06-27)
 
 ### Features
