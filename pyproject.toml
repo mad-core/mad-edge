@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mad-bros"
-version = "0.5.19"
+version = "0.5.20"
 description = "Self-hosted infrastructure that provisions isolated workspaces, clones GitHub repos, and launches external coding agents (Claude Code CLI) — streaming their stdout as agent.output SSE events. Not an orchestrator: no tool-call parsing, no conversation loop."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -53,6 +53,7 @@ mad = "mad.entry_points.cli:main"
 [project.urls]
 Homepage = "https://github.com/mad-core/mad"
 Issues = "https://github.com/mad-core/mad/issues"
+
 
 
 
