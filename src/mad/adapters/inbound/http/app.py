@@ -181,9 +181,7 @@ def create_app(
     # dependent step's task unqueued until its predecessors complete, and then
     # provisions + enqueues it through the same use cases the HTTP routes use.
     final_workflow_read_model = (
-        workflow_read_model
-        if workflow_read_model is not None
-        else _default_workflow_read_model
+        workflow_read_model if workflow_read_model is not None else _default_workflow_read_model
     )
     if workflow_coordinator is not None:
         final_workflow_coordinator = workflow_coordinator
@@ -358,9 +356,7 @@ def create_app(
         return JSONResponse(status_code=422, content={"detail": str(exc)})
 
     @app.exception_handler(WorkflowNotFound)
-    async def _workflow_not_found_handler(
-        request: Request, exc: WorkflowNotFound
-    ) -> JSONResponse:
+    async def _workflow_not_found_handler(request: Request, exc: WorkflowNotFound) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc)})
 
     app.include_router(sessions_router)

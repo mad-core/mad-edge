@@ -242,7 +242,9 @@ async def test_from_step_branch_fresh_clones_predecessor_branch(
             _step(
                 "review",
                 depends_on=("refactor",),
-                mounts=(WorkflowMount(mount_path="/workspace/repo", from_step="refactor", ref="branch"),),
+                mounts=(
+                    WorkflowMount(mount_path="/workspace/repo", from_step="refactor", ref="branch"),
+                ),
             ),
         )
         out = await h.create.execute(CreateWorkflowInput(steps=steps))
@@ -361,7 +363,9 @@ async def test_restart_resumes_a_pending_dependent_step_from_the_log(
     # startup. Simulate a crash after the predecessor completed but before the
     # dependent step started; a fresh coordinator must resume it.
     url, branch, sha = _origin_with_branch(tmp_path)
-    refactor = WorkflowStep(step_id="refactor", agent=_AGENT, prompt="r", mounts=(_github_mount(url),))
+    refactor = WorkflowStep(
+        step_id="refactor", agent=_AGENT, prompt="r", mounts=(_github_mount(url),)
+    )
     review = WorkflowStep(
         step_id="review",
         agent=_AGENT,
@@ -374,7 +378,12 @@ async def test_restart_resumes_a_pending_dependent_step_from_the_log(
     log = FakeEventLogQuery(
         events=[
             _event(1, "wkfl_resume", "workflow.created", created),
-            _event(2, "wkfl_resume", "workflow.step.started", {"step_id": "refactor", "session_id": pred}),
+            _event(
+                2,
+                "wkfl_resume",
+                "workflow.step.started",
+                {"step_id": "refactor", "session_id": pred},
+            ),
             _event(3, pred, "task.completed", {"task_id": "t1"}),
             _event(
                 4,
@@ -406,7 +415,8 @@ async def test_restart_resumes_a_pending_dependent_step_from_the_log(
         # started — provisioned (a fresh session) and its task enqueued.
         emitted = [(c[0], c[1], c[2]) for c in store.calls]
         review_started = [
-            d for (sid, etype, d) in emitted
+            d
+            for (sid, etype, d) in emitted
             if etype == "workflow.step.started" and d is not None and d.get("step_id") == "review"
         ]
         assert len(review_started) == 1

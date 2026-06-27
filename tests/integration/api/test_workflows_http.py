@@ -34,9 +34,9 @@ def _live_client(launcher: ScriptedLauncher) -> Iterator[TestClient]:
 
 def _step(step_id: str, url: str, *, depends_on: list[str] | None = None, mounts=None) -> dict:
     session: dict = {"agent": _AGENT, "prompt": f"{step_id} prompt"}
-    session["mounts"] = mounts if mounts is not None else [
-        {"mount_path": "/workspace/repo", "url": url}
-    ]
+    session["mounts"] = (
+        mounts if mounts is not None else [{"mount_path": "/workspace/repo", "url": url}]
+    )
     step: dict = {"id": step_id, "session": session}
     if depends_on is not None:
         step["depends_on"] = depends_on

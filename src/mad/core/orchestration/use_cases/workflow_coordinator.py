@@ -186,9 +186,7 @@ class WorkflowCoordinator:
                 if terminal == "completed":
                     await self._mark_step_completed(workflow, step.step_id)
                 elif terminal == "failed":
-                    await self._mark_step_failed(
-                        workflow, step.step_id, "interrupted_by_restart"
-                    )
+                    await self._mark_step_failed(workflow, step.step_id, "interrupted_by_restart")
             await self._advance(workflow)
 
     # -- Main loop ---------------------------------------------------------
@@ -248,9 +246,7 @@ class WorkflowCoordinator:
         # A single step failure fails the whole workflow; no further steps start.
         if workflow.workflow_id not in self._workflow_terminal:
             self._workflow_terminal.add(workflow.workflow_id)
-            await self._emitter.emit(
-                workflow.workflow_id, "workflow.failed", {"reason": reason}
-            )
+            await self._emitter.emit(workflow.workflow_id, "workflow.failed", {"reason": reason})
 
     async def _advance(self, workflow: Workflow) -> None:
         """Start every newly-eligible step, then emit completion if all done."""
@@ -287,9 +283,7 @@ class WorkflowCoordinator:
             await self._emitter.emit(
                 wf_id, "workflow.step.started", {"step_id": step.step_id, "session_id": None}
             )
-            await self._mark_step_failed(
-                workflow, step.step_id, f"provisioning failed: {exc}"
-            )
+            await self._mark_step_failed(workflow, step.step_id, f"provisioning failed: {exc}")
             return
 
         self._step_session[key] = session_id
@@ -325,9 +319,7 @@ class WorkflowCoordinator:
         persisted (#88) but may not yet have been observed on the bus. The log
         is the source of truth (hard rule 6), so this is race-free.
         """
-        events = list(
-            self._log.query(EventQuery(session_id=session_id, kind="task.git_result"))
-        )
+        events = list(self._log.query(EventQuery(session_id=session_id, kind="task.git_result")))
         if not events:
             return None
         return dict(events[-1].data)
@@ -371,9 +363,7 @@ class WorkflowCoordinator:
             git_result = self._git_result_for(pred_session) if pred_session else None
             ref, ref_error = _resolve_ref(mount.from_step, mount.ref, git_result)
             if url is None:
-                errors.append(
-                    f"from_step {mount.from_step!r} has no resolvable github url"
-                )
+                errors.append(f"from_step {mount.from_step!r} has no resolvable github url")
                 continue
             if ref_error is not None:
                 errors.append(ref_error)
@@ -429,9 +419,7 @@ class WorkflowCoordinator:
             emitter=self._emitter,
             model_catalog=self._model_catalog,
         )
-        await use_case.execute(
-            EnqueueTaskInput(session_id=session_id, content=step.prompt)
-        )
+        await use_case.execute(EnqueueTaskInput(session_id=session_id, content=step.prompt))
 
 
 def _resolve_ref(
@@ -458,8 +446,7 @@ def _resolve_ref(
         if not head_branch or head_branch == "HEAD":
             return (
                 None,
-                f"from_step {from_step!r} is in detached HEAD; ref='branch' is "
-                "unresolvable",
+                f"from_step {from_step!r} is in detached HEAD; ref='branch' is unresolvable",
             )
         return head_branch, None
     # Default: pin the immutable head_sha.

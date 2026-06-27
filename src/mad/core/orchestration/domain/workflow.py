@@ -105,9 +105,7 @@ class Workflow:
 
     def __post_init__(self) -> None:
         # Frozen dataclass: mutate the index through object.__setattr__.
-        object.__setattr__(
-            self, "step_index", {step.step_id: step for step in self.steps}
-        )
+        object.__setattr__(self, "step_index", {step.step_id: step for step in self.steps})
 
     def step(self, step_id: str) -> WorkflowStep:
         return self.step_index[step_id]
@@ -142,9 +140,7 @@ def validate_workflow(steps: Sequence[WorkflowStep]) -> None:
             if dep == step.step_id:
                 raise InvalidWorkflow(f"step {step.step_id!r} cannot depend on itself")
             if dep not in ids:
-                raise InvalidWorkflow(
-                    f"step {step.step_id!r} depends_on unknown step {dep!r}"
-                )
+                raise InvalidWorkflow(f"step {step.step_id!r} depends_on unknown step {dep!r}")
 
     _reject_cycles(steps)
 
@@ -161,8 +157,7 @@ def _validate_mount(
 ) -> None:
     if mount.type not in _VALID_TYPES:
         raise InvalidWorkflow(
-            f"step {step.step_id!r} mount {mount.mount_path!r} has unknown type "
-            f"{mount.type!r}"
+            f"step {step.step_id!r} mount {mount.mount_path!r} has unknown type {mount.type!r}"
         )
     if mount.from_step is None:
         return
@@ -205,9 +200,7 @@ def _reject_cycles(steps: Sequence[WorkflowStep]) -> None:
         color[node] = GREY
         for dep in graph[node]:
             if color[dep] == GREY:
-                raise InvalidWorkflow(
-                    f"cyclic depends_on detected involving step {node!r}"
-                )
+                raise InvalidWorkflow(f"cyclic depends_on detected involving step {node!r}")
             if color[dep] == WHITE:
                 visit(dep)
         color[node] = BLACK

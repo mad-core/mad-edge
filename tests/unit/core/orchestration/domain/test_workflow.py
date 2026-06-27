@@ -153,9 +153,7 @@ def test_from_step_on_a_file_mount_is_rejected() -> None:
         _step(
             "b",
             depends_on=("a",),
-            mounts=(
-                WorkflowMount(mount_path="/workspace/f", type="file", from_step="a"),
-            ),
+            mounts=(WorkflowMount(mount_path="/workspace/f", type="file", from_step="a"),),
         ),
     ]
     with pytest.raises(InvalidWorkflow, match="only"):

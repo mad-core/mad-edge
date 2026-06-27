@@ -103,9 +103,7 @@ class WorkflowStepStatusResponse(BaseModel):
     status: Literal["pending", "running", "completed", "failed"]
     depends_on: list[str] = Field(default_factory=list)
     session_id: str | None = None
-    reason: str | None = Field(
-        default=None, description="Failure reason when status == 'failed'."
-    )
+    reason: str | None = Field(default=None, description="Failure reason when status == 'failed'.")
 
 
 class WorkflowStatusResponse(BaseModel):
