@@ -7,6 +7,7 @@ ScriptedLauncher and feeds it a list of event sequences.
 
 from __future__ import annotations
 
+import asyncio
 from collections import deque
 from collections.abc import Callable, Coroutine
 from pathlib import Path
@@ -78,6 +79,39 @@ class RaisingLauncher:
         timeout_s: float | None = None,
     ) -> str | None:
         raise self._exc
+
+
+class GatedLauncher:
+    """AgentLauncher double whose every run blocks until ``release()`` is set.
+
+    Used by workflow tests to freeze a step mid-run so the test can assert
+    that a dependent step is held unqueued while its predecessor is still
+    in flight (issue #90). Records the prompt of every run for ordering
+    assertions; emits a single ``session.status_idle`` once released.
+    """
+
+    def __init__(self) -> None:
+        self._gate = asyncio.Event()
+        self.prompts: list[str] = []
+
+    def release(self) -> None:
+        self._gate.set()
+
+    async def run(
+        self,
+        session_id: str,
+        prompt: str,
+        workspace: Path,
+        emit: Callable[[str, dict | None], Coroutine[Any, Any, None]],
+        model: str | None = None,
+        effort: str | None = None,
+        conversation_id: str | None = None,
+        timeout_s: float | None = None,
+    ) -> str | None:
+        self.prompts.append(prompt)
+        await self._gate.wait()
+        await emit("session.status_idle", {"stop_reason": "end_turn"})
+        return None
 
 
 class ScriptedLauncher:
