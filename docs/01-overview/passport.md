@@ -29,8 +29,10 @@ start at [`docs/README.md`](../README.md) and the architecture narrative in
 Self-hosted infrastructure that provisions isolated workspaces, clones GitHub
 repos, and launches **external** autonomous coding agents against them —
 streaming each agent's stdout as `agent.output` events and reporting completion.
-It is infrastructure only: it NEVER parses tool calls, executes tools, or runs an
-agent loop (hard rule 1; non-goals in [`scope.md`](scope.md)).
+Its core is infrastructure: it NEVER parses tool calls, executes tools, or runs an
+agent loop — those stay with the external harness (hard rule 1; non-goals in
+[`scope.md`](scope.md)). On top of that core it also chains sessions into
+workflows, via the `orchestration` surface listed below.
 
 ## Interface profile
 

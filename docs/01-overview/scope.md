@@ -7,12 +7,16 @@ source_of_truth: repo
 
 # Scope and Non-Goals
 
-Mad is deliberately small. It is an **infrastructure layer**: it provisions
-isolated workspaces, clones GitHub repositories, launches external autonomous
-coding agents against them, streams each agent's stdout as `agent.output`
-events, and reports completion (`session.status_idle` on exit 0,
-`session.error` on non-zero exit or timeout). Everything outside that
-boundary is intentionally left to someone else.
+Mad's core is deliberately small. At its foundation is an **infrastructure
+layer**: it provisions isolated workspaces, clones GitHub repositories,
+launches external autonomous coding agents against them, streams each agent's
+stdout as `agent.output` events, and reports completion
+(`session.status_idle` on exit 0, `session.error` on non-zero exit or
+timeout). What that layer deliberately refuses to own — the agent's
+reason-act loop, tool execution, and response parsing — is left to the
+external harness. Chaining several sessions toward one goal is *not* left to
+someone else: it is a separate shipped layer on top of this core, in the
+`core/orchestration/` module.
 
 This page is the catalogue of what Mad **does not** do. Each non-goal is a
 hard boundary with a rationale and, where it exists, a reference to the hard
@@ -27,7 +31,7 @@ is as much in what it refuses to own as in what it provisions.
 | No tool execution | The external agent | Hard rule 1 |
 | No LLM-response / tool-call parsing | The external agent | Hard rule 1 |
 | No multi-tenancy (yet) | Deployment boundary / future module | ADR-0006 |
-| No orchestration or event translation in the events module | A future `core/orchestration/` module | Hard rule 8, ADR-0004 |
+| No orchestration or event translation in the events module | The shipped `core/orchestration/` sibling module | Hard rule 8, ADR-0004 |
 | No in-app authentication | The Cloudflare edge | ADR-0010, `docs/05-operations/runbooks/cloudflare-tunnel.md` |
 | No token persistence | — (tokens are stripped after clone) | Hard rule 2 |
 | No path escape from the workspace | — (rejected before any filesystem op) | Hard rule 3 |
@@ -79,8 +83,7 @@ directories — not inside the application.
 **Rationale.** Adding a `tenant_id` whose only value is a constant is dead
 weight and invites speculative, never-exercised scoping code. Tenancy will
 land everywhere at once (sessions, events, auth) under a single decision when
-Mad actually gains a tenant model — likely alongside the orchestration module
-or an authentication layer.
+Mad actually gains a tenant model — likely alongside an authentication layer.
 *(ADR-0006.)*
 
 ## The events module is observability-only
@@ -92,10 +95,10 @@ dispatch them, run webhook receivers, schedule work, or otherwise act on what
 flows through it.
 
 **Rationale.** Mixing orchestration into the observability surface would blur
-the boundary and bake in guesses about external payloads that do not yet
-exist. When concrete external triggers appear, that logic belongs in a
-separate `core/orchestration/` module — not here. Deferred translation and
-the vocabulary-verbatim rule are spelled out in the ADR.
+the boundary. That logic lives in the separate `core/orchestration/` module —
+not here; the events module keeps exposing the vocabulary verbatim and acting
+on nothing. The events/orchestration split and the vocabulary-verbatim rule
+are spelled out in the ADR.
 *(Hard rule 8, ADR-0004.)*
 
 ## No in-app authentication
