@@ -10,9 +10,10 @@ source_of_truth: repo
 This is a C4 level-1 (system context) view of Mad: who calls it, what it
 calls, and the data that crosses each edge. Mad sits in the middle as a
 self-hosted infrastructure layer; everything else is an external actor or
-system it integrates with. Mad is infrastructure, not an orchestrator — it
-provisions an isolated workspace, clones a repo, launches an external coding
-agent against it, and streams that agent's stdout as events (hard rule 1).
+system it integrates with. Mad's core is infrastructure — it provisions an
+isolated workspace, clones a repo, launches an external coding agent against
+it, and streams that agent's stdout as events (hard rule 1); orchestration of
+several sessions toward one goal is a shipped layer built on top of that core.
 
 ## Context diagram
 
@@ -136,7 +137,9 @@ This channel is internal-only and not exposed to upstream consumers.
 ## Boundaries (what is out of scope here)
 
 Mad deliberately does not own: the agent's reasoning/tool loop (the external
-CLI does), authentication (the edge does), or multi-agent orchestration of
-several sessions into one goal (deferred — ADR-0006, and the README "Vision").
+CLI does) or authentication (the edge does). It *does* chain several sessions
+toward one goal — the `WorkflowCoordinator` in `core/orchestration/` does this
+today (see the workflows user manual). What remains deferred is a tenant model
+(ADR-0006), not orchestration.
 This page describes Mad's external boundary only; the internal hexagonal layout
 (core bounded contexts and adapters) is covered in the architecture section.

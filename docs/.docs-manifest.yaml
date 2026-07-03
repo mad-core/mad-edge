@@ -652,7 +652,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when a Makefile target (install/serve/test/clean) changes, when prerequisites in README change (especially env var resolution logic), when `.env.example` gains/removes a required variable, or when environment variable defaults or fallback behaviors are clarified in README.
-  acknowledged_at_commit: 13efb04a7db2cca88d9f8091f9309ebc0dfada72
+  acknowledged_at_commit: 51a80fc09019117f1717fc8c9f1d07be80ba7a0b
 - path: docs/05-operations/scripts.md
   section: operations
   kind: deterministic

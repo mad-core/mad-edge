@@ -2,9 +2,11 @@
 
 > That's mad!
 
-**M**ulti **A**gent **D**evelop — a self-hosted infrastructure layer that provisions isolated workspaces, clones a GitHub repository, and launches an external coding agent (Claude Code CLI today) against it. Each agent's stdout is streamed as `agent.output` Server-Sent Events on a per-session log, and a final `session.status_idle` (or `session.error`) event signals completion.
+**M**ulti **A**gent **D**evelop — self-hosted infrastructure for **delegating coding work to external agents and walking away.** Queue tasks per session, chain sessions into a validated DAG workflow (`depends_on`, including cross-repo handoff where a later step checks out the exact branch/commit an earlier step produced), and confine runs to the hours and days you choose (`WorkWindowPolicy`, timezone-aware). Hit a Claude Pro/Max rate limit and Mad **waits until the window resets and resumes the same conversation** — reusing capacity you have already paid for instead of failing. Every run closes with an auto-sync step that attempts branch → commit → push → open a PR with the result.
 
-Mad is **infrastructure, not an orchestrator.** It does NOT parse tool calls, NOT execute tools, and NOT manage a conversation loop — those concerns belong to the external agent's own harness. Multiple sessions can run in parallel, each with its own agent process and its own event stream; what Mad does not do is coordinate them into a single autonomous "team."
+Under the hood Mad provisions isolated workspaces, clones a GitHub repository, and launches an external coding agent (Claude Code CLI today) against it. Each agent's stdout is streamed as `agent.output` Server-Sent Events on a per-session log, and a final `session.status_idle` (or `session.error`) event signals completion.
+
+**The core stays pure infrastructure; orchestration is a real, shipping layer on top of it.** Mad itself does NOT parse tool calls, NOT execute tools, and NOT manage a conversation loop — those concerns belong to the external agent's own harness. It *uses* Claude Code / Codex / opencode; it never runs the agent's reasoning loop. Sessions run in parallel, each with its own agent process and event stream, and the workflow layer coordinates them by git branch/commit handoff — not by richer shared state.
 
 The full scope contract lives in [`CLAUDE.md`](CLAUDE.md) ("What this project is" + hard rule 1).
 
@@ -122,9 +124,9 @@ The architectural boundary (`mad.core` is framework-free and adapter-free) is en
 
 ## Vision
 
-Today Mad runs one external agent per session. The longer-term direction is to use this same infrastructure as the substrate for multi-agent workflows — multiple coordinated sessions collaborating on a goal, each one an isolated workspace with its own event stream. Mad itself stays an infrastructure layer; orchestration, when it exists, will live in a separate module on top.
+Mad already uses this infrastructure as the substrate for multi-agent workflows: you chain sessions into a validated DAG with `depends_on`, hand off work across repositories by branch and commit, prioritize across a global queue, and confine runs to a scheduling window — all backed by a complete, append-only event log (JSONL) that records both successes and failures and is queryable over HTTP, SSE, and MCP. The "Multi Agent Develop — takes an idea and ships it end-to-end" framing is a current capability, not a promise for later: the workflow layer ships today.
 
-The "Multi Agent Develop — takes an idea and ships it end-to-end" framing belongs to that future. The package today is the substrate, not the orchestrator.
+The core package stays a pure infrastructure layer; orchestration lives as a real, shipping layer on top of it, never inside the substrate. What is still deferred is worth naming honestly: the handoff between steps is git branch/commit only (not richer shared collaboration), and the closing auto-sync step always *attempts* to open a PR but does not itself guarantee or verify one. Running one isolated Mad instance per stage — plan, dev, review, docs, release — is a pattern you can compose today, not a built-in pipeline.
 
 ## Documentation
 

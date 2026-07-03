@@ -8,7 +8,8 @@ source_of_truth: repo
 # Domain
 
 The entities and business rules this service owns (Session, Event, Task,
-MountPath and the orchestration policies) — not the on-disk persistence layout,
+Workflow, MountPath and the orchestration policies) — not the on-disk
+persistence layout,
 which is [`../02-architecture/data-model.md`](../02-architecture/data-model.md).
 
 This page describes the *what* and the *invariants*. It is sourced from the
@@ -17,8 +18,8 @@ three framework-free bounded contexts under `src/mad/core/`:
 - `sessions/domain/` — the `Session` entity, the `MountPath` value object,
   rehydration, and session exceptions.
 - `events/domain/` — the `Event` record and UUIDv7 `event_id` minting.
-- `orchestration/domain/` — the `Task` entity and the dispatch / model /
-  effort / timeout / priority policies.
+- `orchestration/domain/` — the `Task` and `Workflow` entities and the
+  dispatch / model / effort / timeout / priority policies.
 
 None of these modules import a framework, `subprocess`, or `mad.adapters` —
 the boundary is enforced by import-linter (hard rule 4). Storage shapes, JSONL
@@ -163,8 +164,8 @@ Source: `src/mad/core/orchestration/domain/task.py`.
 
 A `Task` is the orchestration unit — a piece of work submitted via
 `POST /v1/sessions/{id}/tasks`. It is a frozen dataclass: `task_id`,
-`session_id`, `content`, `scheduled_for`, `created_at`, plus optional `model`
-and `conversation_mode` (`"new"` | `"resume"`).
+`session_id`, `content`, `scheduled_for`, `created_at`, plus optional `model`,
+`effort`, and `conversation_mode` (`"new"` | `"resume"`).
 
 ### Rules
 
@@ -200,6 +201,53 @@ From `orchestration/domain/exceptions/`:
 - `SessionHasInFlightTask` — `/messages` called while a queued task is
   dispatched; the queue dispatcher and `/messages` are mutually exclusive on a
   session (HTTP 409, ADR-0009 Decision 6).
+
+## Workflow
+
+Source: `src/mad/core/orchestration/domain/workflow.py`.
+
+A `Workflow` is a validated DAG of `WorkflowStep`s — the domain concept behind
+`POST /v1/workflows` for chaining sessions (ADR-0013). It is a frozen
+dataclass: `workflow_id`, `steps`, `created_at`, plus a derived `step_index`.
+Like `Task`, it holds no status of its own; the graph round-trips through the
+`workflow.created` event payload so it survives a restart via replay (hard rule
+6), and per-step status is *derived* from the `task.*` history
+(`derive_step_status` / `derive_workflow_status` live in this module).
+
+A `WorkflowStep` is one node in the graph: a single Mad session plus one opaque
+task. "The step completed" is exactly that task's `task.completed`. Its fields
+are `step_id`, `agent`, `prompt`, `mounts`, `depends_on` (predecessor step
+ids), `base_branch`, `working_directory`, and the per-session `model`,
+`effort`, and `timeout_s` overrides — the same knobs as `POST /v1/sessions`. A
+step with an empty `depends_on` is a root; otherwise its task is held unqueued
+until every step named in `depends_on` has completed.
+
+A `WorkflowMount` is one mount inside a step's session: a `github_repository`
+(declared explicitly by `url`, or inherited `from_step` a predecessor) or an
+inline `file` (carrying `content`). A `from_step` mount is the only handoff
+between steps, and it is a git ref only — it re-mounts a predecessor's
+repository at `ref="sha"` (default, pinning that step's immutable head commit)
+or `ref="branch"` (tracking its branch tip). Nothing else crosses the step
+boundary.
+
+### Rules
+
+- **The graph is validated at creation (`validate_workflow`, ADR-0013).** A
+  workflow must declare at least one step; every `step_id` must be a non-empty,
+  unique string; every `depends_on` entry must name a known step and may not be
+  the step itself; and the dependency edges may not form a cycle. Any violation
+  raises `InvalidWorkflow` (a `ValueError` → HTTP 422) — malformed graphs are
+  rejected loudly, never silently accepted.
+- **`from_step` inheritance is checked against the dependency edges.** A
+  `from_step` mount may only reference a step listed in that step's
+  `depends_on`, that referenced step must expose a `github_repository` mount,
+  and its `ref` / `type` must be recognised values. This keeps the git handoff
+  consistent with the declared DAG.
+- **State lives in the log, not the entity.** The `Workflow` is immutable after
+  construction and carries no live progress; the authoritative history is the
+  `workflow.created` event plus the `task.*` events of its steps, which the
+  workflow projection folds into pending / running / completed / failed
+  per-step status.
 
 ## MountPath
 
