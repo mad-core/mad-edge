@@ -1,7 +1,7 @@
-"""Integration tests for the ``mad serve`` console-script entry point.
+"""Integration tests for the ``mad-edge serve`` console-script entry point.
 
 Regression coverage for #42: ``cli.py`` had drifted out of sync with
-``build_dependencies()``, so ``mad serve`` raised ``ValueError: too many
+``build_dependencies()``, so ``mad-edge serve`` raised ``ValueError: too many
 values to unpack (expected 6)`` for every pip-installed user. The bug
 went undetected because nothing in the suite exercised the CLI path —
 ``make serve`` runs ``uvicorn`` against ``create_app`` directly and CI
@@ -27,14 +27,14 @@ from mad.entry_points import cli
 
 def _stub_argv(monkeypatch: pytest.MonkeyPatch, args: list[str]) -> None:
     """Replace ``sys.argv`` so ``cli.main`` reads our invocation."""
-    monkeypatch.setattr("sys.argv", ["mad", *args])
+    monkeypatch.setattr("sys.argv", ["mad-edge", *args])
 
 
 def test_main_serve_wires_dependencies_and_reaches_server_start(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """``mad serve`` must complete dependency wiring without ValueError.
+    """``mad-edge serve`` must complete dependency wiring without ValueError.
 
     This is the direct regression test for #42. Before the fix,
     ``cli.main`` raised ``ValueError: too many values to unpack
@@ -70,7 +70,7 @@ def test_main_help_returns_without_wiring_dependencies(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """``mad`` (and ``mad --help``) must print usage without touching deps.
+    """``mad-edge`` (and ``mad-edge --help``) must print usage without touching deps.
 
     Negative twin to the serve test: confirms ``cli.main`` short-circuits
     on the help path and does NOT invoke ``build_dependencies``. Without
@@ -96,7 +96,7 @@ def test_main_help_returns_without_wiring_dependencies(
     cli.main()
 
     out = capsys.readouterr().out
-    assert "usage: mad serve" in out, (
+    assert "usage: mad-edge serve" in out, (
         f"help output did not include the expected usage line; got: {out!r}"
     )
     assert build_deps_calls["count"] == 0
@@ -109,7 +109,7 @@ def test_main_unknown_command_exits_with_code_two(
     """Unknown subcommands must exit non-zero with a clear stderr message.
 
     Negative twin protecting against a regression where ``cli.main``
-    silently no-ops on a typo (e.g. ``mad srve``). The current behavior
+    silently no-ops on a typo (e.g. ``mad-edge srve``). The current behavior
     is ``sys.exit(2)`` with the unknown command echoed; any change to
     that contract should be deliberate.
     """

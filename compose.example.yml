@@ -17,11 +17,11 @@
 
 services:
   mad:
-    image: mad:${MAD_VERSION:-latest}
+    image: mad-edge:${MAD_VERSION:-latest}
     build:
       context: .
       args:
-        # Empty => install the latest published mad-bros. Pin (e.g. 0.5.11) to
+        # Empty => install the latest published mad-edge. Pin (e.g. 0.6.0) to
         # match the image tag to an exact Mad release.
         MAD_VERSION: ${MAD_VERSION:-}
         # Map the container user to the host operator so the bind-mounted
@@ -63,7 +63,7 @@ services:
   # secrets, since services in one file share this .env.
   #
   # mad-beta:
-  #   image: mad:${MAD_VERSION:-latest}
+  #   image: mad-edge:${MAD_VERSION:-latest}
   #   build:
   #     context: .
   #     args:

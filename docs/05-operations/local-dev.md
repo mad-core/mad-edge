@@ -77,7 +77,7 @@ local development:
 | `MAD_MCP_ALLOWED_HOSTS` | Comma-separated allowed Host headers for `/mcp` DNS-rebinding protection | off (auth at the edge) |
 
 Note: the `Makefile` targets do not auto-load `.env`. When running `make serve`
-or `mad serve` directly (outside Docker), export the variables you need in your
+or `mad-edge serve` directly (outside Docker), export the variables you need in your
 shell (or `set -a; . ./.env; set +a`) first. The full `.env` flow is wired up
 for the Docker path described in `docs/05-operations/runbooks/docker.md`.
 
@@ -106,9 +106,9 @@ routes, the SSE stream, and the MCP app at `/mcp`. This target does **not**
 start the internal hook socket — use it when you only need the public API and
 SSE surface.
 
-### `mad serve` — dual uvicorn (public app + internal UDS for hooks)
+### `mad-edge serve` — dual uvicorn (public app + internal UDS for hooks)
 
-The `mad` console script starts **two** uvicorn servers concurrently
+The `mad-edge` console script starts **two** uvicorn servers concurrently
 (`src/mad/entry_points/cli.py`):
 
 1. the **public app** (`create_app`) on `--host`/`--port` (default
@@ -118,9 +118,9 @@ The `mad` console script starts **two** uvicorn servers concurrently
    ADR-0008).
 
 ```bash
-mad serve                      # public on 0.0.0.0:8000 + internal UDS
-mad serve --host 127.0.0.1 --port 9000
-mad --help                     # usage + MAD_HOOK_SOCKET note
+mad-edge serve                 # public on 0.0.0.0:8000 + internal UDS
+mad-edge serve --host 127.0.0.1 --port 9000
+mad-edge --help                # usage + MAD_HOOK_SOCKET note
 ```
 
 The socket path resolves to `MAD_HOOK_SOCKET`, else
@@ -132,7 +132,7 @@ events appear on `GET /v1/events/stream` automatically. The CLI creates the
 socket's parent dir, removes any stale socket, and tightens the socket to
 `0o600` once it appears.
 
-Use `mad serve` (not `make serve`) when you want to exercise the full
+Use `mad-edge serve` (not `make serve`) when you want to exercise the full
 hook-capture path end to end.
 
 ## Run the tests

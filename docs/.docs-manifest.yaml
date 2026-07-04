@@ -612,7 +612,7 @@ docs:
   kind: heuristic
   description: |
     How Mad ships and runs: the container image (Dockerfile), multi-instance
-    compose, the PyPI release of `mad-bros` (semantic-release), and exposure via
+    compose, the PyPI release of `mad-edge` (semantic-release), and exposure via
     a Cloudflare Tunnel. Environments, strategy, rollback.
   triggers:
     discovery_hint: |
@@ -924,7 +924,7 @@ docs:
   description: |
     The package's released versions and what changed in each, mirrored from the
     semantic-release `CHANGELOG.md` at the repo root. Only released,
-    version-tagged changes a `mad-bros` consumer inherits (hard rule 12) — NOT a
+    version-tagged changes a `mad-edge` consumer inherits (hard rule 12) — NOT a
     raw git log.
   triggers:
     discovery_hint: |
@@ -990,7 +990,7 @@ docs:
   section: user-manuals
   kind: manual
   description: |
-    Install Mad (`pip install mad-bros` / `mad serve`, or the Docker
+    Install Mad (`pip install mad-edge` / `mad-edge serve`, or the Docker
     runbook) and complete one first end-to-end round trip: create a
     session, send it a prompt, watch the result — shown for both HTTP and
     MCP.

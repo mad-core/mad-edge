@@ -2,13 +2,6 @@
 
 > That's mad!
 
-> [!WARNING]
-> **`mad-bros` is deprecated — the distribution has been renamed to [`mad-edge`](https://pypi.org/project/mad-edge/).**
-> This is the final release published under the `mad-bros` name; no further versions will ship here.
-> Install `mad-edge` instead (`pip install mad-edge`). The import package remains `mad`; starting
-> with `mad-edge` 0.6.0 the console script is `mad-edge` (`mad-edge serve`), and the `mad` command
-> belongs to the new [`mad-cli`](https://pypi.org/project/mad-cli/) operator tool.
-
 **M**ulti **A**gent **D**evelop — self-hosted infrastructure for **delegating coding work to external agents and walking away.** Queue tasks per session, chain sessions into a validated DAG workflow (`depends_on`, including cross-repo handoff where a later step checks out the exact branch/commit an earlier step produced), and confine runs to the hours and days you choose (`WorkWindowPolicy`, timezone-aware). Hit a Claude Pro/Max rate limit and Mad **waits until the window resets and resumes the same conversation** — reusing capacity you have already paid for instead of failing. Every run closes with an auto-sync step that attempts branch → commit → push → open a PR with the result.
 
 Under the hood Mad provisions isolated workspaces, clones a GitHub repository, and launches an external coding agent (Claude Code CLI today) against it. Each agent's stdout is streamed as `agent.output` Server-Sent Events on a per-session log, and a final `session.status_idle` (or `session.error`) event signals completion.
@@ -35,12 +28,16 @@ Early days — `0.x`. Single launcher provider (`claude_cli`); HTTP + SSE surfac
 
 ## Install
 
-The distribution is published as `mad-bros`; the import package and console script are both `mad`:
+The distribution is published as `mad-edge`; the import package is `mad` and the console script is `mad-edge`:
 
 ```bash
-pip install mad-bros
-mad serve            # uvicorn factory on 0.0.0.0:8000 by default
+pip install mad-edge
+mad-edge serve       # uvicorn factory on 0.0.0.0:8000 by default
 ```
+
+> Prior to 0.6.0 this distribution was published as `mad-bros`; that name is deprecated and will
+> receive no further releases. The import package remains `mad`; the `mad` console command now
+> belongs to the separate `mad-cli` operator tool.
 
 From a checkout (development):
 
@@ -112,7 +109,7 @@ The package follows a hexagonal / ports-and-adapters layout — see [ADR-0003](d
 
 ```
 mad/
-├── pyproject.toml                     # package metadata, deps, `mad` console script
+├── pyproject.toml                     # package metadata, deps, `mad-edge` console script
 ├── src/mad/
 │   ├── core/                          # framework-free domain (no FastAPI, no subprocess)
 │   │   ├── sessions/                  # sessions bounded context (domain, ports, use_cases)
@@ -120,7 +117,7 @@ mad/
 │   ├── adapters/
 │   │   ├── inbound/http/              # FastAPI app factory + routes (sessions, events stream)
 │   │   └── outbound/                  # agents (claude_cli launcher), persistence (JSONL), events
-│   └── entry_points/cli.py            # `mad` console script (uvicorn launcher)
+│   └── entry_points/cli.py            # `mad-edge` console script (uvicorn launcher)
 └── tests/
     ├── unit/                          # core + adapters in isolation
     ├── integration/                   # HTTP + SSE end-to-end

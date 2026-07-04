@@ -1,4 +1,4 @@
-# Mad runtime image — bundles the `mad-bros` package and the agent CLIs the
+# Mad runtime image — bundles the `mad-edge` package and the agent CLIs the
 # launchers shell out to (claude, opencode), plus git and the gh CLI.
 #
 # Built for multi-arch (arm64 for Raspberry Pi, amd64 for dev hosts) — every
@@ -6,7 +6,7 @@
 # apt repo; npm/pip packages resolve the right platform wheel/binary). Build a
 # multi-arch image with buildx:
 #
-#   docker buildx build --platform linux/arm64,linux/amd64 -t mad:0.5.11 .
+#   docker buildx build --platform linux/arm64,linux/amd64 -t mad-edge:0.6.0 .
 #
 # Token hygiene (CLAUDE.md hard rule 2): NO secret is ever baked into a layer.
 # Credentials (GitHub token, AWS, the Claude login) are mounted at runtime via
@@ -16,7 +16,7 @@ FROM node:20-slim
 
 # --- system dependencies + gh CLI -------------------------------------------
 # git: the launchers clone repos. curl/gnupg/ca-certificates: fetch the gh repo
-# key. python3 + venv: run the mad-bros package. The gh apt repo line derives
+# key. python3 + venv: run the mad-edge package. The gh apt repo line derives
 # the architecture so the same Dockerfile builds on arm64 and amd64.
 RUN set -eux; \
     apt-get update; \
@@ -46,15 +46,15 @@ RUN set -eux; \
 RUN npm install -g @anthropic-ai/claude-code opencode-ai \
     && npm cache clean --force
 
-# --- mad-bros package --------------------------------------------------------
+# --- mad-edge package --------------------------------------------------------
 # Installed into an isolated venv (avoids Debian's PEP-668 externally-managed
-# guard) whose bin dir is prepended to PATH so `mad` resolves everywhere.
-# MAD_VERSION pins the release: empty installs the latest published `mad-bros`,
-# `--build-arg MAD_VERSION=0.5.11` pins an exact version (image-tag parity).
+# guard) whose bin dir is prepended to PATH so `mad-edge` resolves everywhere.
+# MAD_VERSION pins the release: empty installs the latest published `mad-edge`,
+# `--build-arg MAD_VERSION=0.6.0` pins an exact version (image-tag parity).
 ARG MAD_VERSION=
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/venv/bin/pip install --no-cache-dir "mad-bros${MAD_VERSION:+==${MAD_VERSION}}"
+    && /opt/venv/bin/pip install --no-cache-dir "mad-edge${MAD_VERSION:+==${MAD_VERSION}}"
 ENV PATH="/opt/venv/bin:${PATH}"
 
 # --- non-root runtime user ---------------------------------------------------
@@ -84,10 +84,10 @@ USER mad
 WORKDIR /home/mad
 EXPOSE 8000
 
-# `mad serve` runs the public API (0.0.0.0:8000) AND the internal UDS uvicorn
+# `mad-edge serve` runs the public API (0.0.0.0:8000) AND the internal UDS uvicorn
 # for claude-cli hook ingestion in one process (see entry_points/cli.py).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS http://localhost:8000/openapi.json >/dev/null || exit 1
 
-ENTRYPOINT ["mad"]
+ENTRYPOINT ["mad-edge"]
 CMD ["serve", "--host", "0.0.0.0", "--port", "8000"]

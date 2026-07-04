@@ -30,7 +30,7 @@ Project conventions and hard rules for anyone (human or Claude) working in this 
 
 11. **`EventEmitter.emit()` is the single write path to the session event log.** Use cases receive `EventEmitter` as an injected dependency and call `emit()`. They MUST NOT call `SessionRepository.append_event` or `EventBus.publish` directly. Outbound adapters (e.g. launcher callback) receive an `emit` callable supplied by the use case; inbound adapters (SSE, query) only subscribe or query — they NEVER write. Rationale and full scope live in [ADR-0007](docs/adr/0007-single-write-gateway-event-emitter.md).
 
-12. **Versioning is for the package, not the repo.** `feat`/`fix`/`perf` apply only to changes visible to a `mad-bros` consumer (HTTP, SSE, CLI, config, agents, deps). Work inside `core/` and internal bounded contexts ships as `refactor`/`chore`/`test`. Minor and major bumps are always deliberate (footer `BREAKING CHANGE:` or `workflow_dispatch`), never auto-derived from counting `feat`s. The pipeline enforces this in three places: `pyproject.toml` demotes `feat` to a patch tag, `.github/workflows/release.yml` path-gates the release trigger so only changes under `src/mad/**`, `pyproject.toml`, `README.md`, or `LICENSE` move the version, and the same workflow exposes a `release_kind: { auto, minor, major }` `workflow_dispatch` input for deliberate milestones.
+12. **Versioning is for the package, not the repo.** `feat`/`fix`/`perf` apply only to changes visible to a `mad-edge` consumer (HTTP, SSE, CLI, config, agents, deps). Work inside `core/` and internal bounded contexts ships as `refactor`/`chore`/`test`. Minor and major bumps are always deliberate (footer `BREAKING CHANGE:` or `workflow_dispatch`), never auto-derived from counting `feat`s. The pipeline enforces this in three places: `pyproject.toml` demotes `feat` to a patch tag, `.github/workflows/release.yml` path-gates the release trigger so only changes under `src/mad/**`, `pyproject.toml`, `README.md`, or `LICENSE` move the version, and the same workflow exposes a `release_kind: { auto, minor, major }` `workflow_dispatch` input for deliberate milestones.
 
    **Public scope set** for `feat`/`fix`/`perf` (the only types that are eligible to land in the consumer-facing CHANGELOG):
 
@@ -38,7 +38,7 @@ Project conventions and hard rules for anyone (human or Claude) working in this 
    |---|---|
    | `http` | HTTP routes, request/response shapes, OpenAPI |
    | `sse` | `/v1/events/stream` and other server-sent event surfaces |
-   | `cli` | `mad` console script and its subcommands |
+   | `cli` | `mad-edge` console script and its subcommands |
    | `config` | Environment variables, `pyproject.toml` settings the operator tunes |
    | `agents` | `AgentLauncher` providers exposed by `factory.get_launcher` |
    | `deps` | Runtime dependency bumps a consumer would inherit |
@@ -69,7 +69,7 @@ make serve     # uvicorn mad.adapters.inbound.http.app:create_app --factory (HOS
 make clean     # drop caches, build artifacts, sessions/
 ```
 
-The `mad` console script (`mad serve`) is also available once the package is installed.
+The `mad-edge` console script (`mad-edge serve`) is also available once the package is installed.
 
 ## Skills
 
@@ -115,7 +115,7 @@ Load-bearing decisions are recorded as ADRs in `docs/adr/` — see `docs/adr/REA
 - `docs/05-operations/runbooks/sandbox-bwrap.md` — operator's guide for hardening the sandbox with bubblewrap.
 - `docs/05-operations/runbooks/cloudflare-tunnel.md` — operator's guide for exposing Mad through a Cloudflare Tunnel with Service-Token-based Cloudflare Access (no project code changes; auth happens at the edge).
 - `docs/05-operations/runbooks/claude-code-mcp.md` — operator's guide for driving Mad from an AI agent over MCP (`/mcp`): tool surface, local + tunneled client config, `MAD_MCP_ALLOWED_HOSTS`, manual validation.
-- `pyproject.toml` — package metadata, dependencies, build backend, and the `mad` console script. Single source of truth for `pip install -e .`.
+- `pyproject.toml` — package metadata, dependencies, build backend, and the `mad-edge` console script. Single source of truth for `pip install -e .`.
 - `src/mad/adapters/inbound/http/app.py` — `create_app(store=..., session_repo=..., workspace_provisioner=..., launcher_factory=...)` factory and router wiring.
 - `src/mad/adapters/inbound/http/dependencies.py` — composition root; builds production defaults for all outbound dependencies, including `EventEmitter`.
 - `src/mad/core/sessions/domain/` — sessions bounded context: `Session` entity, `MountPath` value object, sessions domain exceptions (no I/O, no framework imports).
@@ -131,7 +131,7 @@ Load-bearing decisions are recorded as ADRs in `docs/adr/` — see `docs/adr/REA
 - `src/mad/adapters/outbound/agents/` — production `AgentLauncher` implementations (`claude_cli`, `opencode`) and the by-name `factory.get_launcher` extension point.
 - `src/mad/adapters/outbound/agents/hooks/` — canonical `forward.sh` and `settings.local.json` materialized into every workspace; closed hook list per ADR-0008.
 - `src/mad/adapters/outbound/agents/hook_socket.py` — `default_hook_socket_path()` / `resolve_hook_socket_path()` helpers shared by the launcher and the dual-uvicorn startup.
-- `src/mad/entry_points/cli.py` — uvicorn launcher, `mad` console script entry point.
+- `src/mad/entry_points/cli.py` — uvicorn launcher, `mad-edge` console script entry point.
 - `tests/support/` — test-only doubles (e.g. `ScriptedLauncher`). Never imported from `src/`.
 - `tests/conftest.py` — shared fixtures, including `fake_launcher` (a `ScriptedLauncher`) and `bare_repo`. Unit tests live under `tests/unit/`, integration tests under `tests/integration/`.
 

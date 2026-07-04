@@ -11,9 +11,9 @@ Mad exposes its full HTTP surface as [Model Context Protocol](https://modelconte
 
 The decision record behind this is [ADR-0010](../../adr/0010-mcp-mounted-http-inbound-adapter.md) (why MCP is mounted as a Streamable-HTTP adapter) and [ADR-0012](../../adr/0012-http-mcp-tool-parity.md) (why every request/response route — not just a curated subset — gets a tool). Read them if you want the *why*; this guide is the *how*.
 
-## What `mad serve` exposes
+## What `mad-edge serve` exposes
 
-`mad serve` (and `make serve`) mounts the MCP server as a Streamable-HTTP ASGI app at **`/mcp`** on the same public FastAPI app that serves `/v1/*`. No extra port, no extra process — the existing uvicorn serves it.
+`mad-edge serve` (and `make serve`) mounts the MCP server as a Streamable-HTTP ASGI app at **`/mcp`** on the same public FastAPI app that serves `/v1/*`. No extra port, no extra process — the existing uvicorn serves it.
 
 The tool surface tracks the HTTP surface 1:1 (CLAUDE.md hard rule 13): every `/v1` request/response route has exactly one corresponding tool that calls the same use case, in-process, and returns the same Pydantic shape. `tests/integration/api/test_http_mcp_parity.py` fails the build if a route is added without its tool. The authoritative, per-tool catalog — one row per operation with its HTTP route, MCP tool name, and observable side effects — is [`docs/01-overview/operations.md`](../../01-overview/operations.md); this page does not duplicate it. As of this writing the surface is ~26 tools, grouped by family:
 
@@ -125,7 +125,7 @@ When set, protection is enabled and scoped to exactly those hosts. Leave it unse
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `404` on `/mcp` locally | Running an old build without the mount | `make install` and restart `mad serve` |
+| `404` on `/mcp` locally | Running an old build without the mount | `make install` and restart `mad-edge serve` |
 | `421 Misdirected Request` / "Invalid Host header" | DNS-rebinding protection rejecting the Host | Unset `MAD_MCP_ALLOWED_HOSTS`, or add the hostname to it |
 | `307` then success | `/mcp` → `/mcp/` redirect (normal Starlette mount behaviour) | None — MCP clients follow it automatically |
 | HTML login page from the tunnel | Service Token missing or not in the Access policy | Attach the token to the `mad-service-clients` policy (tunnel guide §3–4) |

@@ -8,7 +8,7 @@ source_of_truth: repo
 # TestPyPI preview builds — operator guide
 
 Every pull request against `main` can publish a throwaway **pre-release** of
-`mad-bros` to [TestPyPI](https://test.pypi.org/) so the *exact built artifact*
+`mad-edge` to [TestPyPI](https://test.pypi.org/) so the *exact built artifact*
 is installable with `pip` before it is ever released to the real index.
 
 The workflow is [`.github/workflows/testpypi-preview.yml`](../../../.github/workflows/testpypi-preview.yml).
@@ -59,8 +59,8 @@ stay dormant.
 
 1. Create an account on <https://test.pypi.org>.
 2. Register a **Trusted Publisher** (a "pending publisher") for project
-   `mad-bros` at <https://test.pypi.org/manage/account/publishing/>:
-   - **Owner:** `mad-core`  **Repository:** `mad`
+   `mad-edge` at <https://test.pypi.org/manage/account/publishing/>:
+   - **Owner:** `mad-core`  **Repository:** `mad-edge`
    - **Workflow name:** `testpypi-preview.yml`
    - **Environment name:** `testpypi`
 3. Create a GitHub Environment named `testpypi`
@@ -74,12 +74,12 @@ To pause previews later, set `TESTPYPI_ENABLED` to anything other than `true`
 ## Installing a preview
 
 The `verify` job comments the exact command on each PR. It installs the wheel by
-its TestPyPI URL so that **only `mad-bros` comes from TestPyPI and every
+its TestPyPI URL so that **only `mad-edge` comes from TestPyPI and every
 dependency resolves from the real PyPI** (the default index):
 
 ```bash
 pip install "$(curl -s \
-  https://test.pypi.org/pypi/mad-bros/0.5.6.dev<run_id>/json \
+  https://test.pypi.org/pypi/mad-edge/0.6.0.dev<run_id>/json \
   | jq -r 'first(.urls[] | select(.packagetype=="bdist_wheel") | .url)')"
 ```
 

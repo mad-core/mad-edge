@@ -1,6 +1,6 @@
 name: TestPyPI preview
 
-# Publishes a pre-release (PEP 440 `.dev` version) of mad-bros to TestPyPI for
+# Publishes a pre-release (PEP 440 `.dev` version) of mad-edge to TestPyPI for
 # every PR against `main`, so the *exact built artifact* can be installed with
 # pip before it ever reaches the real index.
 #
@@ -13,8 +13,8 @@ name: TestPyPI preview
 # ── One-time setup (until done, only `build` runs and it is always green) ──
 #   1. Create an account on https://test.pypi.org.
 #   2. Register a Trusted Publisher (a "pending publisher") for project
-#      `mad-bros` at https://test.pypi.org/manage/account/publishing/ with:
-#        Owner: mad-core   Repository: mad
+#      `mad-edge` at https://test.pypi.org/manage/account/publishing/ with:
+#        Owner: mad-core   Repository: mad-edge
 #        Workflow name: testpypi-preview.yml   Environment: testpypi
 #   3. Create a GitHub Environment named `testpypi`
 #      (repo Settings → Environments → New environment).
@@ -103,7 +103,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/mad-bros
+      url: https://test.pypi.org/p/mad-edge
     permissions:
       id-token: write
     steps:
@@ -134,7 +134,7 @@ jobs:
         env:
           VERSION: ${{ needs.build.outputs.version }}
         # Resolve the exact wheel URL from TestPyPI's JSON API and install THAT
-        # url, so pip pulls mad-bros from TestPyPI but every dependency from the
+        # url, so pip pulls mad-edge from TestPyPI but every dependency from the
         # default index (real PyPI). Pointing pip's --index-url at TestPyPI for
         # the whole resolution is unsafe: TestPyPI hosts junk squats (e.g. a
         # dummy `FASTAPI 1.0`) that shadow real deps by version number and break
@@ -144,14 +144,14 @@ jobs:
           python -m venv /tmp/v
           wheel_url=""
           for i in $(seq 1 12); do
-            wheel_url=$(curl -fsS "https://test.pypi.org/pypi/mad-bros/${VERSION}/json" 2>/dev/null \
+            wheel_url=$(curl -fsS "https://test.pypi.org/pypi/mad-edge/${VERSION}/json" 2>/dev/null \
               | jq -r 'first(.urls[] | select(.packagetype=="bdist_wheel") | .url) // empty' || true)
             [ -n "$wheel_url" ] && break
             echo "attempt $i: ${VERSION} not on TestPyPI yet, waiting…"
             sleep 15
           done
           if [ -z "$wheel_url" ]; then
-            echo "::error::wheel for mad-bros==${VERSION} never appeared on TestPyPI"
+            echo "::error::wheel for mad-edge==${VERSION} never appeared on TestPyPI"
             exit 1
           fi
           echo "Installing ${wheel_url} (dependencies resolve from real PyPI)"
@@ -175,7 +175,7 @@ jobs:
               "Install this PR's exact built artifact (deps resolve from real PyPI):",
               '```bash',
               'pip install "$(curl -s \\',
-              `  https://test.pypi.org/pypi/mad-bros/${version}/json \\`,
+              `  https://test.pypi.org/pypi/mad-edge/${version}/json \\`,
               "  | jq -r 'first(.urls[] | select(.packagetype==\"bdist_wheel\") | .url)')\"",
               '```',
               '',
