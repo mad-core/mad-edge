@@ -342,6 +342,7 @@ async def test_tool_surface_is_the_full_request_response_route_set(client: TestC
             "mad_get_deployment_effort",
             "mad_set_deployment_effort",
             "mad_clear_deployment_effort",
+            "mad_get_config",
         ]
     )
 
@@ -939,3 +940,45 @@ async def test_get_deployment_model_unset_returns_null(client: TestClient) -> No
     async with _mcp_session(client) as s:
         body = _dict_result(await s.call_tool("mad_get_deployment_model", {}))
     assert body == {"model": None}
+
+
+# --- tool: mad_get_config (issue #107) ---------------------------------------
+
+
+async def test_get_config_tool_reports_credential_presence(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``mad_get_config`` returns the effective config with credential presence
+    booleans; a set ``GITHUB_TOKEN`` reads as ``true``."""
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_mcp_canary_secret")
+    async with _mcp_session(client) as s:
+        body = _dict_result(await s.call_tool("mad_get_config", {}))
+    assert body["credentials"]["github_token"] is True
+    assert body["agent_timeout_s"]["source"] in {"env", "default"}
+
+
+async def test_get_config_tool_never_leaks_secret_values(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hard rule 2 over the MCP surface: the raw token string must not appear
+    anywhere in the tool's serialized result."""
+    secret = "ghp_mcp_leak_canary_do_not_emit"
+    monkeypatch.setenv("GITHUB_TOKEN", secret)
+    async with _mcp_session(client) as s:
+        result = await s.call_tool("mad_get_config", {})
+    serialized = result.content[0].text  # type: ignore[union-attr]
+    assert secret not in serialized
+
+
+async def test_get_config_tool_matches_http_response(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Parity (hard rule 13): the tool and GET /v1/config resolve the same env
+    at call time and therefore return the same body."""
+    monkeypatch.setenv("MAD_AGENT_TIMEOUT_S", "77")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    http_body = client.get("/v1/config").json()
+    async with _mcp_session(client) as s:
+        tool_body = _dict_result(await s.call_tool("mad_get_config", {}))
+    assert tool_body == http_body
+    assert tool_body["agent_timeout_s"] == {"value": 77.0, "source": "env"}

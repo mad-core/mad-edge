@@ -30,6 +30,10 @@ from uuid import UUID
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from mad.adapters.inbound.http.routes.config import (
+    ConfigResponse,
+    build_config_response,
+)
 from mad.adapters.inbound.http.routes.events import _serialize_event
 from mad.adapters.inbound.http.routes.orchestration import (
     CancelTaskResponse,
@@ -73,6 +77,7 @@ from mad.adapters.inbound.http.routes.workflows import (
     _to_domain_step,
 )
 from mad.core.config.settings import load_settings
+from mad.core.config.use_cases.get_config import GetConfigUseCase
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_log_query import EventLogQuery
 from mad.core.events.use_cases.query_events import QueryEventsInput, QueryEventsUseCase
@@ -728,6 +733,18 @@ def build_mcp_server(
         )
         output: DeploymentEffortOutput = await use_case.execute()
         return DeploymentEffortResponse(effort=output.effort)
+
+    # -- Config: effective operational configuration (issue #107) -------------
+
+    @mcp.tool(
+        name="mad_get_config",
+        description="Read the server's effective operational configuration: each "
+        "MAD_* tunable as {value, source: env|default}, plus credential presence "
+        "booleans (never the values). Read-only. Mirrors GET /v1/config.",
+    )
+    def mad_get_config() -> ConfigResponse:
+        settings = GetConfigUseCase().execute()
+        return build_config_response(settings)
 
     # -- Events: historical query (issue #32) ---------------------------------
 
