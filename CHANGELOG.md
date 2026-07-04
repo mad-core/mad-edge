@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.5.26 (2026-07-04)
+
+### Bug Fixes
+
+- Deprecate mad-bros distribution in favor of mad-edge
+  ([`c5b334d`](https://github.com/mad-core/mad/commit/c5b334d721cd5724a1bf7312fc4df3b0ab6411b3))
+
+
 ## v0.5.25 (2026-06-27)
 
 
