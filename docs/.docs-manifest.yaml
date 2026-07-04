@@ -946,8 +946,8 @@ docs:
   produces:
     type: manual
   adapted_heuristic: |
-    Mirror CHANGELOG.md verbatim: add new version sections in reverse-chronological order (newest first), preserve existing section structure (Features/Bug Fixes subsections), use exact commit/PR links from source, and maintain the four-field frontmatter. Update repo URLs to match current canonical source (mad-core/mad).
-  acknowledged_at_commit: 13efb04a7db2cca88d9f8091f9309ebc0dfada72
+    Mirror CHANGELOG.md verbatim: add new version sections in reverse-chronological order (newest first), preserve existing section structure (Features/Bug Fixes subsections), use exact commit/PR links from source, and maintain the four-field frontmatter. Update repo URLs to match current canonical source (mad-core/mad-edge).
+  acknowledged_at_commit: f8abb798c0de3f4d3ef9abc4b9585f51fda190de
 - path: docs/09-history/migrations.md
   section: history
   kind: heuristic
