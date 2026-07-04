@@ -89,7 +89,7 @@ async def test_run_does_not_mutate_callers_environment(
 ) -> None:
     """Negative twin: env vars must only be set on the subprocess, never on
     the calling process. A leak here would surface as cross-session
-    contamination once mad serve handles concurrent runs.
+    contamination once mad-edge serve handles concurrent runs.
     """
     import os
 

@@ -35,7 +35,7 @@ def main() -> None:
     argv = sys.argv[1:]
     if not argv or argv[0] in {"-h", "--help"}:
         print(
-            "usage: mad serve [--host HOST] [--port PORT]\n"
+            "usage: mad-edge serve [--host HOST] [--port PORT]\n"
             "\n"
             "Environment variables:\n"
             "  MAD_HOOK_SOCKET   Path for the internal Unix Domain Socket\n"

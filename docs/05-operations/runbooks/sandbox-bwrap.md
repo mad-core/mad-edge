@@ -112,9 +112,9 @@ export MAD_CLAUDE_CLI_BIN=/usr/local/bin/claude-sandboxed
 The same shape works for `opencode` — swap `REAL_CLAUDE_BIN` for a real
 `opencode` path and export `MAD_OPENCODE_BIN` instead.
 
-### 2. Wrap `mad serve` entirely
+### 2. Wrap `mad-edge serve` entirely
 
-Alternatively, run the whole `mad serve` process inside one bwrap sandbox
+Alternatively, run the whole `mad-edge serve` process inside one bwrap sandbox
 (binding in whatever the server itself needs — workspaces dir, `.env`, the
 Claude Pro/Max login directory) instead of wrapping the CLI per launch. This
 trades per-launch granularity for a single sandbox boundary around the entire

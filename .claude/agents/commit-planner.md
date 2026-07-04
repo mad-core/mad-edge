@@ -116,7 +116,7 @@ Do not mark internal refactors as breaking even if they look invasive — the pu
 For each commit, build:
 
 - **Subject** (≤72 chars, imperative): `<type>(<scope>)<!?>: <one-line summary>`
-- **Body** (optional, wrapped at ~72 chars): the *why* in 1–3 sentences. State *why* this change matters to a `mad-bros` consumer (for public-scope commits) or which internal phase this is (for internal commits).
+- **Body** (optional, wrapped at ~72 chars): the *why* in 1–3 sentences. State *why* this change matters to a `mad-edge` consumer (for public-scope commits) or which internal phase this is (for internal commits).
 - **Footers**:
   - `Closes #<issue_number>` on the LAST commit in the bisect order, only if `issue_number` is non-empty.
   - `BREAKING CHANGE: <impact + migration>` on any breaking commit (matching the `!` marker).

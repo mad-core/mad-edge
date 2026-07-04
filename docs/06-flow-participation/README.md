@@ -24,7 +24,7 @@ it from the list at the end.
 
 ## Canonical flow: GitHub issue -> session -> agent run -> events -> PR
 
-A consumer (the `mad-bros` package, an MCP client, or a CI workflow) reacts to a
+A consumer (the `mad-edge` package, an MCP client, or a CI workflow) reacts to a
 labeled GitHub issue, calls Mad to create a session, and Mad drives the agent run
 to a pull request. Mad's seat is the **session lifecycle** — everything between
 "create session" and "auto-sync opens the PR".
@@ -33,7 +33,7 @@ to a pull request. Mad's seat is the **session lifecycle** — everything betwee
 sequenceDiagram
     autonumber
     participant GH as GitHub issue (labeled)
-    participant Consumer as Consumer<br/>(mad-bros / MCP client / CI)
+    participant Consumer as Consumer<br/>(mad-edge / MCP client / CI)
     participant Mad as Mad (infrastructure)
     participant WS as Workspace (cloned repo)
     participant Agent as External agent<br/>(claude / opencode)

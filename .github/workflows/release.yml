@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/mad-bros
+      url: https://pypi.org/p/mad-edge
     permissions:
       id-token: write
     steps:
@@ -116,7 +116,7 @@ jobs:
   #   runs-on: ubuntu-latest
   #   environment:
   #     name: testpypi
-  #     url: https://test.pypi.org/p/mad-bros
+  #     url: https://test.pypi.org/p/mad-edge
   #   permissions:
   #     id-token: write
   #   steps:
@@ -137,7 +137,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/mad-bros
+      url: https://pypi.org/p/mad-edge
     permissions:
       id-token: write
     steps:

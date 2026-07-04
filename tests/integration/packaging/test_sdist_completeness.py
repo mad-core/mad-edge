@@ -7,7 +7,7 @@ both the top-level runtime ``sessions/`` directory (intended) AND the source
 package ``src/mad/core/sessions/`` (not intended), stripping the entire
 sessions bounded context from the sdist.  Because semantic-release builds the
 wheel from the sdist (``python -m build``, no flags), the published wheel was
-broken: ``pip install mad-bros`` then ``mad serve`` raised
+broken: ``pip install mad-edge`` then ``mad-edge serve`` raised
 ``ModuleNotFoundError: No module named 'mad.core.sessions'``.
 
 The fix was to anchor the pattern to the repo root: ``"sessions"`` →
@@ -129,7 +129,7 @@ def test_runtime_sessions_dir_absent_from_sdist(sdist_members: list[str]) -> Non
     ``mad/core/`` in front) would indicate the runtime directory leaked into
     the archive.
     """
-    # Runtime sessions/ paths look like "mad-bros-0.5.6/sessions/<something>".
+    # Runtime sessions/ paths look like "mad_edge-0.6.0/sessions/<something>".
     # They do NOT contain "mad/core/sessions" — that is the source package.
     leaked = [m for m in sdist_members if "/sessions/" in m and "mad/core/sessions" not in m]
     assert leaked == [], (

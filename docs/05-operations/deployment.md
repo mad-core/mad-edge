@@ -8,7 +8,7 @@ source_of_truth: repo
 # Deployment
 
 How Mad ships and runs: the container image (`Dockerfile`), the multi-instance
-compose model (`compose.example.yml`), the PyPI release of `mad-bros` via
+compose model (`compose.example.yml`), the PyPI release of `mad-edge` via
 python-semantic-release (`.github/workflows/release.yml`), and exposure to the
 internet via a Cloudflare Tunnel. Environments, deploy strategy, and rollback
 are covered at the end.
@@ -22,14 +22,14 @@ exposure. This page maps the moving parts and links out.
 
 Mad is distributed two ways, from the same source tree:
 
-1. **The `mad-bros` PyPI package** (import package `mad`, console script `mad`).
+1. **The `mad-edge` PyPI package** (import package `mad`, console script `mad-edge`).
    Published by `release.yml` on every version-relevant push to `main`. This is
    what a consumer `pip install`s, and what the container image installs at build
    time.
 2. **A self-built container image.** The repo ships the *scaffolding* only —
    `Dockerfile`, `compose.example.yml`, `.env.example`. There is **no published
    registry image**; each host builds its own image from the `Dockerfile`
-   (`docs/05-operations/runbooks/docker.md`). The image bundles `mad-bros` plus the agent CLIs the
+   (`docs/05-operations/runbooks/docker.md`). The image bundles `mad-edge` plus the agent CLIs the
    launchers shell out to.
 
 No secret is ever baked into an image layer or committed (CLAUDE.md hard rule 2);
@@ -48,11 +48,11 @@ the `.env` file.
 - **Agent CLIs:** `@anthropic-ai/claude-code` (the `claude` binary the
   `claude_cli` launcher spawns) and `opencode-ai` (the `opencode` binary the
   `opencode` launcher spawns), installed globally via npm onto `PATH`.
-- **The `mad-bros` package:** installed into an isolated venv at `/opt/venv`
+- **The `mad-edge` package:** installed into an isolated venv at `/opt/venv`
   (avoids Debian's PEP-668 externally-managed guard), whose `bin` dir is
-  prepended to `PATH` so `mad` resolves everywhere. The `MAD_VERSION` build arg
-  pins the release: empty installs the latest published `mad-bros`,
-  `--build-arg MAD_VERSION=0.5.11` pins an exact version for image-tag parity.
+  prepended to `PATH` so `mad-edge` resolves everywhere. The `MAD_VERSION` build arg
+  pins the release: empty installs the latest published `mad-edge`,
+  `--build-arg MAD_VERSION=0.6.0` pins an exact version for image-tag parity.
 - **Non-root runtime user:** a `mad` user is created with **configurable
   UID/GID** via the `PUID`/`PGID` build args (default `1000:1000`). Matching the
   ids to the host operator keeps the bind-mounted workspace writable and
@@ -64,10 +64,10 @@ the `.env` file.
 
 ### Entrypoint and the dual-uvicorn process
 
-The image's `ENTRYPOINT` is `mad`, with default `CMD ["serve", "--host",
+The image's `ENTRYPOINT` is `mad-edge`, with default `CMD ["serve", "--host",
 "0.0.0.0", "--port", "8000"]`. `EXPOSE 8000` documents the public port.
 
-`mad serve` runs **two uvicorn servers in one process** (see
+`mad-edge serve` runs **two uvicorn servers in one process** (see
 `src/mad/entry_points/cli.py`):
 
 - the **public app** (`mad.adapters.inbound.http`) on `0.0.0.0:8000` — the HTTP
@@ -85,7 +85,7 @@ The image targets **arm64** (Raspberry Pi) and **amd64**. Build multi-arch with
 buildx:
 
 ```bash
-docker buildx build --platform linux/arm64,linux/amd64 -t mad:0.5.11 .
+docker buildx build --platform linux/arm64,linux/amd64 -t mad-edge:0.6.0 .
 ```
 
 ## The multi-instance compose model
@@ -98,7 +98,7 @@ multiple fully-isolated instances run on a single host. The full guide is
 |---|---|
 | `MAD_INSTANCE` | Instance name. Drives the container name (`mad-<instance>`) and the per-instance host bind-mount paths (`./instances/<instance>/...`). A different name yields a different host directory — the isolation boundary. |
 | `MAD_HOST_PORT` | Host port published onto container `8000` (default `8080`). Distinct per instance so two instances never collide. |
-| `MAD_VERSION` | Both the `mad-bros` version pinned at build (`MAD_VERSION` build arg) and the image tag (`image: mad:${MAD_VERSION:-latest}`). |
+| `MAD_VERSION` | Both the `mad-edge` version pinned at build (`MAD_VERSION` build arg) and the image tag (`image: mad-edge:${MAD_VERSION:-latest}`). |
 | `PUID` / `PGID` | Build args mapping the container user to the host operator (default `1000:1000`) so workspace files stay writable and host-owned. Changing them requires a rebuild. |
 
 **Bind mounts** (not Docker named volumes) keep state inspectable on the host
@@ -126,9 +126,9 @@ env-file plus project name (`--env-file .env.beta -p mad-beta`, recommended for
 separate secrets), or the commented-out copy-paste service block in the compose
 file.
 
-## The PyPI release of `mad-bros`
+## The PyPI release of `mad-edge`
 
-`.github/workflows/release.yml` publishes `mad-bros` with
+`.github/workflows/release.yml` publishes `mad-edge` with
 **python-semantic-release** (`@v9`). Configuration lives in
 `[tool.semantic_release]` in `pyproject.toml`.
 
@@ -154,9 +154,9 @@ file.
 
   | Field | Value |
   |---|---|
-  | PyPI project name | `mad-bros` |
+  | PyPI project name | `mad-edge` |
   | Owner | `mad-core` |
-  | Repository name | `mad` |
+  | Repository name | `mad-edge` |
   | Workflow filename | `release.yml` |
   | Environment name | `pypi` |
 
@@ -185,7 +185,7 @@ file.
 ### Pre-release previews (TestPyPI)
 
 `.github/workflows/testpypi-preview.yml` publishes a PEP 440 `.devNNN` version
-(`<base>.dev<run_id>`) of `mad-bros` to **TestPyPI** for every PR against `main`,
+(`<base>.dev<run_id>`) of `mad-edge` to **TestPyPI** for every PR against `main`,
 so the *exact built artifact* can be `pip install`ed before it reaches the real
 index — a build → publish → install-from-index → import round-trip that an
 editable checkout cannot reproduce (the motivating packaging bug, #50, only
@@ -226,7 +226,7 @@ authentication happens at the edge, not in Mad. The full operator guide is
 |---|---|---|
 | **Local dev** | The package from an editable checkout | `make install` then `make serve` (also starts the internal UDS uvicorn). |
 | **Self-hosted instance** | The container image, one or more isolated instances | `compose.example.yml` per `docs/05-operations/runbooks/docker.md`; typically a Raspberry Pi or dev host. |
-| **PyPI (`pypi`)** | The published `mad-bros` package | `release.yml` → `publish-pypi`, Trusted Publishing. |
+| **PyPI (`pypi`)** | The published `mad-edge` package | `release.yml` → `publish-pypi`, Trusted Publishing. |
 | **TestPyPI (`testpypi`)** | Pre-release `.dev` previews per PR | `testpypi-preview.yml`, gated on `TESTPYPI_ENABLED`. |
 
 There is no shared multi-tenant environment: multi-tenancy is deferred
@@ -236,8 +236,8 @@ one tunnel hostname per user (`docs/05-operations/runbooks/cloudflare-tunnel.md`
 ## Deploy strategy
 
 The container model is **pull-the-version, rebuild, recreate**. Because the image
-installs `mad-bros` pinned by the `MAD_VERSION` build arg and tags itself
-`mad:${MAD_VERSION}`, pinning a version gives a reproducible image per instance:
+installs `mad-edge` pinned by the `MAD_VERSION` build arg and tags itself
+`mad-edge:${MAD_VERSION}`, pinning a version gives a reproducible image per instance:
 
 ```bash
 # Move an instance to a newer release.
@@ -255,10 +255,10 @@ of a single-container instance (`restart: unless-stopped`).
 Rollback is **pin a prior release/tag**:
 
 - **Container:** set `MAD_VERSION` back to the previous version in `.env` and
-  re-run `up -d --build`. The image installs that exact `mad-bros` and tags
+  re-run `up -d --build`. The image installs that exact `mad-edge` and tags
   itself accordingly. Bind-mounted state is unaffected.
 - **Package:** every release is a Git tag (`v{version}`) and an immutable PyPI
-  version, so any consumer can `pip install mad-bros==<prior>`. PyPI versions are
+  version, so any consumer can `pip install mad-edge==<prior>`. PyPI versions are
   immutable — roll forward to a fixed patch rather than mutating a published
   version.
 - **Verify before trusting a build:** the TestPyPI preview round-trip

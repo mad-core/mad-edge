@@ -33,8 +33,8 @@ look at one piece of the same loop.
 ### Step 1 — Install and start Mad
 
 ```bash
-pip install mad-bros
-mad serve            # listens on 0.0.0.0:8000 by default
+pip install mad-edge
+mad-edge serve       # listens on 0.0.0.0:8000 by default
 ```
 
 Running Mad in a container instead? See
@@ -152,7 +152,7 @@ Mad runs the desk — it never picks up a wrench itself.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Connection refused on port 8000 | Mad isn't running yet | Run `mad serve` (or confirm the container is up) |
+| Connection refused on port 8000 | Mad isn't running yet | Run `mad-edge serve` (or confirm the container is up) |
 | The repo fails to clone | It's private and no GitHub token is set where Mad runs | Set `GITHUB_TOKEN` (or `GH_TOKEN`) on that machine, then create the session again — never pass a token in the request |
 | Nothing seems to happen after sending a message | You're looking at a one-off snapshot instead of the stream | Poll `GET /v1/sessions/{id}` (`mad_get_session`) again after a few seconds, or open the event stream |
 | The first prompt takes a while | Normal — the agent is actually working; larger repos and prompts take longer | Watch `agent.output` events for progress |
