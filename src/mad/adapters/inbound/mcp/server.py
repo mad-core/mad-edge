@@ -22,7 +22,6 @@ and infers nothing (hard rule 1).
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -31,6 +30,10 @@ from uuid import UUID
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from mad.adapters.inbound.http.routes.config import (
+    ConfigResponse,
+    build_config_response,
+)
 from mad.adapters.inbound.http.routes.events import _serialize_event
 from mad.adapters.inbound.http.routes.orchestration import (
     CancelTaskResponse,
@@ -73,6 +76,8 @@ from mad.adapters.inbound.http.routes.workflows import (
     WorkflowStepStatusResponse,
     _to_domain_step,
 )
+from mad.core.config.settings import load_settings
+from mad.core.config.use_cases.get_config import GetConfigUseCase
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_log_query import EventLogQuery
 from mad.core.events.use_cases.query_events import QueryEventsInput, QueryEventsUseCase
@@ -168,14 +173,19 @@ def _transport_security() -> TransportSecuritySettings:
     So protection is OFF by default. Operators who want in-process
     defense-in-depth set ``MAD_MCP_ALLOWED_HOSTS`` to a comma-separated
     host allowlist, which flips protection ON scoped to those hosts.
+
+    The env read is delegated to the central settings module (issue #97).
+    Protection flips ON exactly when ``MAD_MCP_ALLOWED_HOSTS`` carries a
+    non-blank value (``source == "env"``) — keyed off the source, not the host
+    count, so a value that parses to zero hosts keeps the historical
+    "protection on, empty allowlist" behaviour rather than silently disabling.
     """
-    raw = os.environ.get("MAD_MCP_ALLOWED_HOSTS", "").strip()
-    if not raw:
+    allowed_hosts = load_settings().mcp_allowed_hosts
+    if allowed_hosts.source == "default":
         return TransportSecuritySettings(enable_dns_rebinding_protection=False)
-    hosts = [h.strip() for h in raw.split(",") if h.strip()]
     return TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
-        allowed_hosts=hosts,
+        allowed_hosts=list(allowed_hosts.value),
     )
 
 
@@ -723,6 +733,18 @@ def build_mcp_server(
         )
         output: DeploymentEffortOutput = await use_case.execute()
         return DeploymentEffortResponse(effort=output.effort)
+
+    # -- Config: effective operational configuration (issue #107) -------------
+
+    @mcp.tool(
+        name="mad_get_config",
+        description="Read the server's effective operational configuration: each "
+        "MAD_* tunable as {value, source: env|default}, plus credential presence "
+        "booleans (never the values). Read-only. Mirrors GET /v1/config.",
+    )
+    def mad_get_config() -> ConfigResponse:
+        settings = GetConfigUseCase().execute()
+        return build_config_response(settings)
 
     # -- Events: historical query (issue #32) ---------------------------------
 

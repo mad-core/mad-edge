@@ -15,7 +15,7 @@ The decision record behind this is [ADR-0010](../../adr/0010-mcp-mounted-http-in
 
 `mad-edge serve` (and `make serve`) mounts the MCP server as a Streamable-HTTP ASGI app at **`/mcp`** on the same public FastAPI app that serves `/v1/*`. No extra port, no extra process — the existing uvicorn serves it.
 
-The tool surface tracks the HTTP surface 1:1 (CLAUDE.md hard rule 13): every `/v1` request/response route has exactly one corresponding tool that calls the same use case, in-process, and returns the same Pydantic shape. `tests/integration/api/test_http_mcp_parity.py` fails the build if a route is added without its tool. The authoritative, per-tool catalog — one row per operation with its HTTP route, MCP tool name, and observable side effects — is [`docs/01-overview/operations.md`](../../01-overview/operations.md); this page does not duplicate it. As of this writing the surface is ~26 tools, grouped by family:
+The tool surface tracks the HTTP surface 1:1 (CLAUDE.md hard rule 13): every `/v1` request/response route has exactly one corresponding tool that calls the same use case, in-process, and returns the same Pydantic shape. `tests/integration/api/test_http_mcp_parity.py` fails the build if a route is added without its tool. The authoritative, per-tool catalog — one row per operation with its HTTP route, MCP tool name, and observable side effects — is [`docs/01-overview/operations.md`](../../01-overview/operations.md); this page does not duplicate it. As of this writing the surface is ~27 tools, grouped by family:
 
 | Family | Tools | Covers |
 |---|---|---|
@@ -25,6 +25,7 @@ The tool surface tracks the HTTP surface 1:1 (CLAUDE.md hard rule 13): every `/v
 | Workflows | `mad_create_workflow`, `mad_get_workflow` | Multi-session workflow creation and status. |
 | Dispatch policy | `mad_set_session_dispatch_policy`, `mad_clear_session_dispatch_policy`, `mad_get_deployment_dispatch_policy`, `mad_set_deployment_dispatch_policy`, `mad_trigger_dispatch`, `mad_set_session_priority` | Per-session and deployment-wide dispatch policy, manual dispatch trigger, and session priority. |
 | Deployment model / effort | `mad_get_deployment_model`, `mad_set_deployment_model`, `mad_clear_deployment_model`, `mad_get_deployment_effort`, `mad_set_deployment_effort`, `mad_clear_deployment_effort`, `mad_list_provider_models` | The default provider model/effort a session launches with, and the models a provider exposes. |
+| Configuration | `mad_get_config` | Read-only effective operational configuration (`GET /v1/config`): each `MAD_*` tunable as `{value, source}` plus credential presence booleans — never credential values (hard rule 2). |
 
 The **only** deliberate gap is the streaming SSE surface (`GET /v1/events/stream`): server-sent events are operator telemetry, not a request/response call, and stay off MCP's request/response surface per the ADR-0012 carve-out — they get their own MCP streaming primitive instead of a tool. The historical query `GET /v1/events` is **not** part of that carve-out; it is `mad_query_events` like any other route. Classification ("which failed / needs attention / safe to delete") is the orchestrator LLM's job over tool results — Mad returns raw status and infers nothing (hard rule 1).
 

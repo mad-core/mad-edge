@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from mad.adapters.inbound.http.dependencies import build_dependencies, touch_session
+from mad.adapters.inbound.http.routes.config import router as config_router
 from mad.adapters.inbound.http.routes.events import router as events_router
 from mad.adapters.inbound.http.routes.orchestration import router as orchestration_router
 from mad.adapters.inbound.http.routes.providers import router as providers_router
@@ -364,5 +365,6 @@ def create_app(
     app.include_router(orchestration_router)
     app.include_router(providers_router)
     app.include_router(workflows_router)
+    app.include_router(config_router)
     app.mount("/mcp", mcp_asgi_app)
     return app

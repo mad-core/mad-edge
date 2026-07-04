@@ -35,6 +35,7 @@ tests/
 │   │   └── __init__.py
 │   ├── api/
 │   │   ├── __init__.py
+│   │   ├── test_config_http.py
 │   │   ├── test_conversation_id.py
 │   │   ├── test_deployment_effort_http.py
 │   │   ├── test_deployment_model_http.py
@@ -106,6 +107,12 @@ tests/
 │   │   │   └── test_workspace_path.py
 │   │   └── __init__.py
 │   ├── core/
+│   │   ├── config/
+│   │   │   ├── use_cases/
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── test_get_config.py
+│   │   │   ├── __init__.py
+│   │   │   └── test_settings.py
 │   │   ├── events/
 │   │   │   ├── domain/
 │   │   │   │   ├── __init__.py

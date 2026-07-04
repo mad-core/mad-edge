@@ -4,10 +4,11 @@ import json
 import os
 import shutil
 import subprocess
-import tempfile
 from importlib import resources
 from pathlib import Path
 from typing import Any
+
+from mad.core.config.settings import load_settings
 
 _FORWARD_HOOK_MARKER = "/.claude/hooks/forward.sh"
 
@@ -51,14 +52,11 @@ def _workspace_base() -> Path:
     2. ``~/mad`` — XDG-friendly default on persistent storage.
     3. ``tempfile.gettempdir()`` — last resort, reached only when the home
        directory cannot be resolved (``Path.home()`` raises ``RuntimeError``).
+
+    The whole precedence is owned by the central settings module (issue #97);
+    this helper just materialises the resolved value as a ``Path``.
     """
-    configured = os.environ.get("MAD_WORKSPACE_DIR")
-    if configured and configured.strip():
-        return Path(configured)
-    try:
-        return Path.home() / "mad"
-    except RuntimeError:
-        return Path(tempfile.gettempdir())
+    return Path(load_settings().workspace_dir.value)
 
 
 def workspace_path(session_id: str) -> Path:

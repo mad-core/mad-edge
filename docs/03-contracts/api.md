@@ -102,7 +102,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         "type": "object"
       },
       "ClearDispatchPolicyResponse": {
-        "description": "Returned after ``DELETE`` clears a session's override (issue #45).\n\n``inherited`` is always ``True`` (the session now inherits);\n``effective_policy`` is the policy that governs the session after the\nclear — the deployment default, or ``immediate`` when none is set.",
+        "description": "Returned after ``DELETE`` clears a session's override (issue #45).\n\n``inherited`` is always ``True`` (the session now inherits);\n``effective_policy`` is the policy that governs the session after the\nclear \u2014 the deployment default, or ``immediate`` when none is set.",
         "properties": {
           "effective_policy": {
             "additionalProperties": true,
@@ -124,6 +124,202 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
           "effective_policy"
         ],
         "title": "ClearDispatchPolicyResponse",
+        "type": "object"
+      },
+      "ConfigEntry_Union_int__NoneType__": {
+        "properties": {
+          "source": {
+            "description": "`env` when set via the environment variable, `default` when the built-in fallback is in effect.",
+            "enum": [
+              "env",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The effective value in force for this process.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "source"
+        ],
+        "title": "ConfigEntry[Union[int, NoneType]]",
+        "type": "object"
+      },
+      "ConfigEntry_Union_str__NoneType__": {
+        "properties": {
+          "source": {
+            "description": "`env` when set via the environment variable, `default` when the built-in fallback is in effect.",
+            "enum": [
+              "env",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The effective value in force for this process.",
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "source"
+        ],
+        "title": "ConfigEntry[Union[str, NoneType]]",
+        "type": "object"
+      },
+      "ConfigEntry_float_": {
+        "properties": {
+          "source": {
+            "description": "`env` when set via the environment variable, `default` when the built-in fallback is in effect.",
+            "enum": [
+              "env",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "description": "The effective value in force for this process.",
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "value",
+          "source"
+        ],
+        "title": "ConfigEntry[float]",
+        "type": "object"
+      },
+      "ConfigEntry_list_str__": {
+        "properties": {
+          "source": {
+            "description": "`env` when set via the environment variable, `default` when the built-in fallback is in effect.",
+            "enum": [
+              "env",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "description": "The effective value in force for this process.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Value",
+            "type": "array"
+          }
+        },
+        "required": [
+          "value",
+          "source"
+        ],
+        "title": "ConfigEntry[list[str]]",
+        "type": "object"
+      },
+      "ConfigEntry_str_": {
+        "properties": {
+          "source": {
+            "description": "`env` when set via the environment variable, `default` when the built-in fallback is in effect.",
+            "enum": [
+              "env",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "description": "The effective value in force for this process.",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "source"
+        ],
+        "title": "ConfigEntry[str]",
+        "type": "object"
+      },
+      "ConfigResponse": {
+        "description": "The server's effective operational configuration (read-only).",
+        "properties": {
+          "agent_timeout_s": {
+            "$ref": "#/components/schemas/ConfigEntry_float_",
+            "description": "Operator default agent wall-clock timeout, seconds (`MAD_AGENT_TIMEOUT_S`)."
+          },
+          "claude_cli_bin": {
+            "$ref": "#/components/schemas/ConfigEntry_Union_str__NoneType__",
+            "description": "Configured `claude` CLI binary override; `null` means auto-detect from PATH (`MAD_CLAUDE_CLI_BIN`)."
+          },
+          "credentials": {
+            "$ref": "#/components/schemas/CredentialsView",
+            "description": "Presence-only booleans for credential env vars (never the values)."
+          },
+          "hook_socket": {
+            "$ref": "#/components/schemas/ConfigEntry_str_",
+            "description": "Unix Domain Socket path for hook ingestion (`MAD_HOOK_SOCKET`)."
+          },
+          "mcp_allowed_hosts": {
+            "$ref": "#/components/schemas/ConfigEntry_list_str__",
+            "description": "MCP DNS-rebinding Host allowlist; empty means protection off (`MAD_MCP_ALLOWED_HOSTS`)."
+          },
+          "opencode_bin": {
+            "$ref": "#/components/schemas/ConfigEntry_Union_str__NoneType__",
+            "description": "Configured `opencode` CLI binary override; `null` means auto-detect from PATH (`MAD_OPENCODE_BIN`)."
+          },
+          "sessions_dir": {
+            "$ref": "#/components/schemas/ConfigEntry_str_",
+            "description": "Directory holding the per-session JSONL logs (`MAD_SESSIONS_DIR`)."
+          },
+          "sessions_retention_days": {
+            "$ref": "#/components/schemas/ConfigEntry_Union_int__NoneType__",
+            "description": "JSONL log retention TTL in days; `null` means retention disabled (`MAD_SESSIONS_RETENTION_DAYS`)."
+          },
+          "sse_heartbeat_s": {
+            "$ref": "#/components/schemas/ConfigEntry_float_",
+            "description": "SSE keepalive interval in seconds (`MAD_SSE_HEARTBEAT_S`)."
+          },
+          "workspace_dir": {
+            "$ref": "#/components/schemas/ConfigEntry_str_",
+            "description": "Base directory for per-session workspaces (`MAD_WORKSPACE_DIR`)."
+          }
+        },
+        "required": [
+          "agent_timeout_s",
+          "sessions_dir",
+          "sessions_retention_days",
+          "sse_heartbeat_s",
+          "mcp_allowed_hosts",
+          "workspace_dir",
+          "hook_socket",
+          "claude_cli_bin",
+          "opencode_bin",
+          "credentials"
+        ],
+        "title": "ConfigResponse",
         "type": "object"
       },
       "CreateSessionRequest": {
@@ -151,7 +347,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
                 "type": "null"
               }
             ],
-            "description": "Optional reasoning-effort level; overrides the deployment default for this session. Forwarded verbatim to the provider CLI (``--effort`` for claude, ``--variant`` for opencode) — an opaque pass-through string, not validated by Mad. ``null`` (default) inherits from the deployment effort default.",
+            "description": "Optional reasoning-effort level; overrides the deployment default for this session. Forwarded verbatim to the provider CLI (``--effort`` for claude, ``--variant`` for opencode) \u2014 an opaque pass-through string, not validated by Mad. ``null`` (default) inherits from the deployment effort default.",
             "title": "Effort"
           },
           "model": {
@@ -240,8 +436,41 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         "title": "CreateWorkflowResponse",
         "type": "object"
       },
+      "CredentialsView": {
+        "description": "Presence-only view of credential env vars \u2014 booleans, NEVER the values.\n\nA value (or even a masked value) is deliberately absent for every field\nhere; only whether the variable is set to a non-blank value is reported\n(hard rule 2).",
+        "properties": {
+          "anthropic_api_key": {
+            "description": "`ANTHROPIC_API_KEY` is set.",
+            "title": "Anthropic Api Key",
+            "type": "boolean"
+          },
+          "aws": {
+            "description": "`AWS_ACCESS_KEY_ID` is set.",
+            "title": "Aws",
+            "type": "boolean"
+          },
+          "claude_code_oauth_token": {
+            "description": "`CLAUDE_CODE_OAUTH_TOKEN` is set.",
+            "title": "Claude Code Oauth Token",
+            "type": "boolean"
+          },
+          "github_token": {
+            "description": "`GITHUB_TOKEN` or `GH_TOKEN` is set to a non-blank value.",
+            "title": "Github Token",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "github_token",
+          "anthropic_api_key",
+          "claude_code_oauth_token",
+          "aws"
+        ],
+        "title": "CredentialsView",
+        "type": "object"
+      },
       "DeploymentDispatchPolicyResponse": {
-        "description": "The deployment-wide default policy (issue #45).\n\n``policy`` is the canonical serialized form. When no deployment policy\nhas been configured, this echoes ``{\"kind\": \"immediate\"}`` — the\neffective default that inheriting sessions fall back to.",
+        "description": "The deployment-wide default policy (issue #45).\n\n``policy`` is the canonical serialized form. When no deployment policy\nhas been configured, this echoes ``{\"kind\": \"immediate\"}`` \u2014 the\neffective default that inheriting sessions fall back to.",
         "properties": {
           "policy": {
             "additionalProperties": true,
@@ -256,7 +485,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         "type": "object"
       },
       "DeploymentEffortResponse": {
-        "description": "Current deployment-wide reasoning-effort default.\n\n``effort`` is ``null`` when no deployment effort has been set — sessions\nwith no override will use the provider's machine-configured default (no\n``--effort`` / ``--variant`` flag is passed).",
+        "description": "Current deployment-wide reasoning-effort default.\n\n``effort`` is ``null`` when no deployment effort has been set \u2014 sessions\nwith no override will use the provider's machine-configured default (no\n``--effort`` / ``--variant`` flag is passed).",
         "properties": {
           "effort": {
             "anyOf": [
@@ -274,7 +503,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         "type": "object"
       },
       "DeploymentModelResponse": {
-        "description": "Current deployment-wide model default.\n\n``model`` is ``null`` when no deployment model has been set — sessions\nwith no override will use the provider's machine-configured default.",
+        "description": "Current deployment-wide model default.\n\n``model`` is ``null`` when no deployment model has been set \u2014 sessions\nwith no override will use the provider's machine-configured default.",
         "properties": {
           "model": {
             "anyOf": [
@@ -354,7 +583,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
           },
           "scheduled_for": {
             "default": "now",
-            "description": "Scheduling hint. ``now`` (default) preserves the immediate-dispatch behaviour. Other values (``next_window``, ISO 8601 timestamps) are accepted but not interpreted in v1 — recorded on the event verbatim.",
+            "description": "Scheduling hint. ``now`` (default) preserves the immediate-dispatch behaviour. Other values (``next_window``, ISO 8601 timestamps) are accepted but not interpreted in v1 \u2014 recorded on the event verbatim.",
             "title": "Scheduled For",
             "type": "string"
           }
@@ -395,7 +624,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         "type": "object"
       },
       "GlobalQueueResponse": {
-        "description": "``GET /v1/queue`` — policy groups are never flattened: ``ready``\nholds only sessions dispatchable right now (true dispatch order;\n``ready[0]`` is what dispatches next), ``scheduled`` holds the\nwindow-gated / manual ones with a reason.",
+        "description": "``GET /v1/queue`` \u2014 policy groups are never flattened: ``ready``\nholds only sessions dispatchable right now (true dispatch order;\n``ready[0]`` is what dispatches next), ``scheduled`` holds the\nwindow-gated / manual ones with a reason.",
         "properties": {
           "in_flight": {
             "anyOf": [
@@ -597,6 +826,8 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
                 "type": "null"
               }
             ],
+            "deprecated": true,
+            "description": "DEPRECATED (issue #89), removal target v0.6.0. Inline GitHub clone PAT. Source the credential from the host's GITHUB_TOKEN (or GH_TOKEN) environment variable instead \u2014 passing a secret through the request body risks leaking it into client logs / MCP transcripts. When still supplied, it takes precedence over the host env var and emits a deprecation warning.",
             "title": "Authorization Token"
           },
           "checkout": {
@@ -963,7 +1194,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
           },
           "status": {
             "default": "dispatched",
-            "description": "``dispatched`` — the task is running normally. ``retrying`` — the task hit a rate limit and is sleeping before the next attempt; see ``retry_info`` for details.",
+            "description": "``dispatched`` \u2014 the task is running normally. ``retrying`` \u2014 the task hit a rate limit and is sleeping before the next attempt; see ``retry_info`` for details.",
             "enum": [
               "dispatched",
               "retrying"
@@ -1024,6 +1255,13 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -1106,6 +1344,29 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         "title": "WindowSpec",
         "type": "object"
       },
+      "WorkWindowPolicyRequest": {
+        "properties": {
+          "kind": {
+            "const": "work_window",
+            "title": "Kind",
+            "type": "string"
+          },
+          "windows": {
+            "items": {
+              "$ref": "#/components/schemas/WindowSpec"
+            },
+            "minItems": 1,
+            "title": "Windows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "windows"
+        ],
+        "title": "WorkWindowPolicyRequest",
+        "type": "object"
+      },
       "WorkflowMountRequest": {
         "properties": {
           "content": {
@@ -1169,11 +1430,42 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         "title": "WorkflowMountRequest",
         "type": "object"
       },
+      "WorkflowStatusResponse": {
+        "properties": {
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStepStatusResponse"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "workflow_id": {
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "status",
+          "steps"
+        ],
+        "title": "WorkflowStatusResponse",
+        "type": "object"
+      },
       "WorkflowStepRequest": {
         "properties": {
           "depends_on": {
-            "default": [],
-            "description": "Zero or more predecessor step ids. The step's task is not enqueued until all of them emit task.completed. An ordering barrier on its own — independent of from_step.",
+            "description": "Zero or more predecessor step ids. The step's task is not enqueued until all of them emit task.completed. An ordering barrier on its own \u2014 independent of from_step.",
             "items": {
               "type": "string"
             },
@@ -1236,7 +1528,6 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
             "title": "Model"
           },
           "mounts": {
-            "default": [],
             "items": {
               "$ref": "#/components/schemas/WorkflowMountRequest"
             },
@@ -1279,42 +1570,9 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         "title": "WorkflowStepSession",
         "type": "object"
       },
-      "WorkflowStatusResponse": {
-        "properties": {
-          "status": {
-            "enum": [
-              "pending",
-              "running",
-              "completed",
-              "failed"
-            ],
-            "title": "Status",
-            "type": "string"
-          },
-          "steps": {
-            "items": {
-              "$ref": "#/components/schemas/WorkflowStepStatusResponse"
-            },
-            "title": "Steps",
-            "type": "array"
-          },
-          "workflow_id": {
-            "title": "Workflow Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "workflow_id",
-          "status",
-          "steps"
-        ],
-        "title": "WorkflowStatusResponse",
-        "type": "object"
-      },
       "WorkflowStepStatusResponse": {
         "properties": {
           "depends_on": {
-            "default": [],
             "items": {
               "type": "string"
             },
@@ -1365,29 +1623,6 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         ],
         "title": "WorkflowStepStatusResponse",
         "type": "object"
-      },
-      "WorkWindowPolicyRequest": {
-        "properties": {
-          "kind": {
-            "const": "work_window",
-            "title": "Kind",
-            "type": "string"
-          },
-          "windows": {
-            "items": {
-              "$ref": "#/components/schemas/WindowSpec"
-            },
-            "minItems": 1,
-            "title": "Windows",
-            "type": "array"
-          }
-        },
-        "required": [
-          "kind",
-          "windows"
-        ],
-        "title": "WorkWindowPolicyRequest",
-        "type": "object"
       }
     }
   },
@@ -1397,6 +1632,28 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/config": {
+      "get": {
+        "description": "Return the server's effective operational configuration (read-only).\n\nValues reflect the process environment at request time; credentials are\nreported as presence booleans only, never as values (hard rule 2).",
+        "operationId": "get_config_v1_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Config",
+        "tags": [
+          "config"
+        ]
+      }
+    },
     "/v1/dispatch_policy": {
       "get": {
         "description": "Read the deployment-wide default dispatch policy.\n\nReturns the configured singleton, or ``{\"kind\": \"immediate\"}`` when no\ndeployment policy has been set (the effective fallback every inheriting\nsession uses).",
@@ -1419,7 +1676,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         ]
       },
       "put": {
-        "description": "Set the deployment-wide default dispatch policy.\n\nReuses the same discriminated union as the per-session ``PATCH``\n(``immediate`` / ``work_window`` / ``manual``). Every inheriting session\nhonours the new default on the next dispatch evaluation (live\ninheritance — no restart, no per-session re-PATCH). Emits\n``dispatch_policy.default.updated`` so the singleton is rebuilt on\nrestart via JSONL replay (hard rule 6).",
+        "description": "Set the deployment-wide default dispatch policy.\n\nReuses the same discriminated union as the per-session ``PATCH``\n(``immediate`` / ``work_window`` / ``manual``). Every inheriting session\nhonours the new default on the next dispatch evaluation (live\ninheritance \u2014 no restart, no per-session re-PATCH). Emits\n``dispatch_policy.default.updated`` so the singleton is rebuilt on\nrestart via JSONL replay (hard rule 6).",
         "operationId": "set_deployment_dispatch_policy_v1_dispatch_policy_put",
         "requestBody": {
           "content": {
@@ -1500,7 +1757,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         ]
       },
       "get": {
-        "description": "Read the deployment-wide default reasoning effort.\n\nReturns ``null`` for ``effort`` when no default has been set — the provider\nuses its own machine-configured default in that case.",
+        "description": "Read the deployment-wide default reasoning effort.\n\nReturns ``null`` for ``effort`` when no default has been set \u2014 the provider\nuses its own machine-configured default in that case.",
         "operationId": "get_deployment_effort_v1_effort_get",
         "responses": {
           "200": {
@@ -1520,7 +1777,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         ]
       },
       "put": {
-        "description": "Set the deployment-wide default reasoning effort.\n\nEvery session that has no per-session ``effort`` override will use this\ndefault on the next launcher invocation (live inheritance — no restart\nrequired). Emits ``effort.default.updated`` so the setting survives a\nrestart via JSONL replay (hard rule 6). The value is opaque — Mad does\nnot validate it against any provider's effort levels.",
+        "description": "Set the deployment-wide default reasoning effort.\n\nEvery session that has no per-session ``effort`` override will use this\ndefault on the next launcher invocation (live inheritance \u2014 no restart\nrequired). Emits ``effort.default.updated`` so the setting survives a\nrestart via JSONL replay (hard rule 6). The value is opaque \u2014 Mad does\nnot validate it against any provider's effort levels.",
         "operationId": "set_deployment_effort_v1_effort_put",
         "requestBody": {
           "content": {
@@ -1806,7 +2063,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         ]
       },
       "get": {
-        "description": "Read the deployment-wide default model.\n\nReturns ``null`` for ``model`` when no default has been set — the provider\nuses its own machine-configured default in that case.",
+        "description": "Read the deployment-wide default model.\n\nReturns ``null`` for ``model`` when no default has been set \u2014 the provider\nuses its own machine-configured default in that case.",
         "operationId": "get_deployment_model_v1_model_get",
         "responses": {
           "200": {
@@ -1826,7 +2083,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         ]
       },
       "put": {
-        "description": "Set the deployment-wide default model.\n\nEvery session that has no per-session ``model`` override will use this\ndefault on the next launcher invocation (live inheritance — no restart\nrequired). Emits ``model.default.updated`` so the setting survives a\nrestart via JSONL replay (hard rule 6).",
+        "description": "Set the deployment-wide default model.\n\nEvery session that has no per-session ``model`` override will use this\ndefault on the next launcher invocation (live inheritance \u2014 no restart\nrequired). Emits ``model.default.updated`` so the setting survives a\nrestart via JSONL replay (hard rule 6).",
         "operationId": "set_deployment_model_v1_model_put",
         "requestBody": {
           "content": {
@@ -1889,7 +2146,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
     },
     "/v1/queue": {
       "get": {
-        "description": "Global queue view across all sessions, policy-aware.\n\n``ready`` is computed with the same ordering function AND the same\neffective-policy resolution (per-session override, else the\ndeployment default, else immediate — issue #45) the dispatcher\nuses, so ``ready[0]`` is exactly the next dispatch.",
+        "description": "Global queue view across all sessions, policy-aware.\n\n``ready`` is computed with the same ordering function AND the same\neffective-policy resolution (per-session override, else the\ndeployment default, else immediate \u2014 issue #45) the dispatcher\nuses, so ``ready[0]`` is exactly the next dispatch.",
         "operationId": "get_global_queue_v1_queue_get",
         "responses": {
           "200": {
@@ -2285,7 +2542,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         ]
       },
       "patch": {
-        "description": "Set the dispatch policy for a session.\n\nThe body is a discriminated union on ``kind``:\n- ``{\"kind\": \"immediate\"}`` (default — same as today)\n- ``{\"kind\": \"work_window\", \"windows\": [...]}`` (overnight runs etc.)\n- ``{\"kind\": \"manual\"}`` (queue accumulates; explicit trigger drains)\n\nEmits ``dispatch_policy.updated`` so the policy survives a process\nrestart via JSONL replay.",
+        "description": "Set the dispatch policy for a session.\n\nThe body is a discriminated union on ``kind``:\n- ``{\"kind\": \"immediate\"}`` (default \u2014 same as today)\n- ``{\"kind\": \"work_window\", \"windows\": [...]}`` (overnight runs etc.)\n- ``{\"kind\": \"manual\"}`` (queue accumulates; explicit trigger drains)\n\nEmits ``dispatch_policy.updated`` so the policy survives a process\nrestart via JSONL replay.",
         "operationId": "update_dispatch_policy_v1_sessions__session_id__dispatch_policy_patch",
         "parameters": [
           {

@@ -54,6 +54,7 @@ _ROUTE_TO_TOOL: dict[tuple[str, str], str] = {
     ("GET", "/v1/effort"): "mad_get_deployment_effort",
     ("PUT", "/v1/effort"): "mad_set_deployment_effort",
     ("DELETE", "/v1/effort"): "mad_clear_deployment_effort",
+    ("GET", "/v1/config"): "mad_get_config",
 }
 
 

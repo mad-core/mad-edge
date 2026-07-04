@@ -11,8 +11,9 @@ The adapter NEVER raises — every failure path returns the fallback list.
 from __future__ import annotations
 
 import asyncio
-import os
 import shutil
+
+from mad.core.config.settings import load_settings
 
 # Static fallbacks — used ONLY when dynamic discovery is unavailable.
 _CLAUDE_CLI_FALLBACK = ["opus", "sonnet", "haiku"]
@@ -26,7 +27,7 @@ async def _discover_claude_cli() -> list[str]:
 
 
 async def _discover_opencode() -> list[str]:
-    executable = os.environ.get("MAD_OPENCODE_BIN") or shutil.which("opencode")
+    executable = load_settings().opencode_bin.value or shutil.which("opencode")
     if not executable:
         return list(_OPENCODE_FALLBACK)
     try:
