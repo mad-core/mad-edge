@@ -2,6 +2,13 @@
 
 > That's mad!
 
+> [!WARNING]
+> **`mad-bros` is deprecated — the distribution has been renamed to [`mad-edge`](https://pypi.org/project/mad-edge/).**
+> This is the final release published under the `mad-bros` name; no further versions will ship here.
+> Install `mad-edge` instead (`pip install mad-edge`). The import package remains `mad`; starting
+> with `mad-edge` 0.6.0 the console script is `mad-edge` (`mad-edge serve`), and the `mad` command
+> belongs to the new [`mad-cli`](https://pypi.org/project/mad-cli/) operator tool.
+
 **M**ulti **A**gent **D**evelop — self-hosted infrastructure for **delegating coding work to external agents and walking away.** Queue tasks per session, chain sessions into a validated DAG workflow (`depends_on`, including cross-repo handoff where a later step checks out the exact branch/commit an earlier step produced), and confine runs to the hours and days you choose (`WorkWindowPolicy`, timezone-aware). Hit a Claude Pro/Max rate limit and Mad **waits until the window resets and resumes the same conversation** — reusing capacity you have already paid for instead of failing. Every run closes with an auto-sync step that attempts branch → commit → push → open a PR with the result.
 
 Under the hood Mad provisions isolated workspaces, clones a GitHub repository, and launches an external coding agent (Claude Code CLI today) against it. Each agent's stdout is streamed as `agent.output` Server-Sent Events on a per-session log, and a final `session.status_idle` (or `session.error`) event signals completion.
