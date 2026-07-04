@@ -22,7 +22,6 @@ and infers nothing (hard rule 1).
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -73,6 +72,7 @@ from mad.adapters.inbound.http.routes.workflows import (
     WorkflowStepStatusResponse,
     _to_domain_step,
 )
+from mad.core.config.settings import load_settings
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_log_query import EventLogQuery
 from mad.core.events.use_cases.query_events import QueryEventsInput, QueryEventsUseCase
@@ -168,14 +168,19 @@ def _transport_security() -> TransportSecuritySettings:
     So protection is OFF by default. Operators who want in-process
     defense-in-depth set ``MAD_MCP_ALLOWED_HOSTS`` to a comma-separated
     host allowlist, which flips protection ON scoped to those hosts.
+
+    The env read is delegated to the central settings module (issue #97).
+    Protection flips ON exactly when ``MAD_MCP_ALLOWED_HOSTS`` carries a
+    non-blank value (``source == "env"``) — keyed off the source, not the host
+    count, so a value that parses to zero hosts keeps the historical
+    "protection on, empty allowlist" behaviour rather than silently disabling.
     """
-    raw = os.environ.get("MAD_MCP_ALLOWED_HOSTS", "").strip()
-    if not raw:
+    allowed_hosts = load_settings().mcp_allowed_hosts
+    if allowed_hosts.source == "default":
         return TransportSecuritySettings(enable_dns_rebinding_protection=False)
-    hosts = [h.strip() for h in raw.split(",") if h.strip()]
     return TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
-        allowed_hosts=hosts,
+        allowed_hosts=list(allowed_hosts.value),
     )
 
 

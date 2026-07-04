@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import shutil
 from collections.abc import Callable, Coroutine
 from pathlib import Path
@@ -15,6 +14,7 @@ from mad.adapters.outbound.agents._subprocess import (
     _subprocess_env,
 )
 from mad.adapters.outbound.agents.hook_socket import resolve_hook_socket_path
+from mad.core.config.settings import load_settings
 from mad.core.orchestration.domain.exceptions.rate_limit import RateLimitError
 from mad.core.orchestration.domain.timeout_config import DEFAULT_AGENT_TIMEOUT_S
 
@@ -46,7 +46,7 @@ class OpenCodeProvider:
         conversation_id: str | None = None,
         timeout_s: float | None = None,
     ) -> str | None:
-        executable = os.environ.get("MAD_OPENCODE_BIN") or shutil.which("opencode")
+        executable = load_settings().opencode_bin.value or shutil.which("opencode")
         if not executable:
             await emit(
                 "session.error",

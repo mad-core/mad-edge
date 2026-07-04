@@ -21,14 +21,19 @@ Precedence (most specific wins):
 
 from __future__ import annotations
 
-import os
-
-#: Hard-coded fallback when neither a per-session override nor the
-#: ``MAD_AGENT_TIMEOUT_S`` env var is set.
-DEFAULT_AGENT_TIMEOUT_S = 600.0
+from mad.core.config.settings import AGENT_TIMEOUT_ENV, DEFAULT_AGENT_TIMEOUT_S, load_settings
 
 #: Operator-facing env var that sets the global launcher timeout default.
-AGENT_TIMEOUT_ENV_VAR = "MAD_AGENT_TIMEOUT_S"
+#: Re-exported from the central settings module (issue #97) so the historical
+#: import path keeps working.
+AGENT_TIMEOUT_ENV_VAR = AGENT_TIMEOUT_ENV
+
+__all__ = [
+    "AGENT_TIMEOUT_ENV_VAR",
+    "DEFAULT_AGENT_TIMEOUT_S",
+    "env_timeout_s",
+    "resolve_effective_timeout",
+]
 
 
 def resolve_effective_timeout(
@@ -50,17 +55,15 @@ def resolve_effective_timeout(
 
 
 def env_timeout_s() -> float | None:
-    """Read ``MAD_AGENT_TIMEOUT_S`` from the environment.
+    """Read ``MAD_AGENT_TIMEOUT_S`` via the central settings module.
 
     Returns the parsed float, or ``None`` when the var is unset or empty so
     the resolver falls back to its hard-coded default.  A malformed value
     (non-numeric) also yields ``None`` rather than crashing a launch — the
-    operator default silently reverts to 600 s.
+    operator default silently reverts to 600 s. The read is delegated to
+    :func:`~mad.core.config.settings.load_settings` (issue #97): the settings
+    loader records ``source == "env"`` exactly when the variable was present
+    and parsed, so this reader's historical contract is preserved.
     """
-    raw = os.environ.get(AGENT_TIMEOUT_ENV_VAR)
-    if not raw:
-        return None
-    try:
-        return float(raw)
-    except ValueError:
-        return None
+    timeout = load_settings().agent_timeout_s
+    return timeout.value if timeout.source == "env" else None

@@ -31,7 +31,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import os
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated, Any
@@ -40,6 +39,7 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import StreamingResponse
 
+from mad.core.config.settings import DEFAULT_SSE_HEARTBEAT_S, load_settings
 from mad.core.events.domain.event import Event
 from mad.core.events.ports.event_bus import EventBus
 from mad.core.events.ports.event_log_query import EventLogQuery
@@ -55,7 +55,9 @@ from mad.core.events.use_cases.stream_events import (
 router = APIRouter(tags=["events"])
 
 
-_HEARTBEAT_DEFAULT_S = 15.0
+#: Re-exported from the central settings module so the default lives in one
+#: place (issue #97). Kept importable here for the existing route tests.
+_HEARTBEAT_DEFAULT_S = DEFAULT_SSE_HEARTBEAT_S
 _HEARTBEAT_FRAME = ": ping\n\n"
 _SSE_HEADERS = {
     "Cache-Control": "no-cache, no-transform",
@@ -68,18 +70,11 @@ def _heartbeat_interval() -> float:
 
     Missing, unparseable, or non-positive values fall back to the
     default so a misconfiguration cannot silently disable the
-    heartbeat behind a buffering proxy.
+    heartbeat behind a buffering proxy. Read fresh on every stream so an
+    operator/test override is honoured at runtime; delegated to the central
+    settings module (issue #97).
     """
-    raw = os.environ.get("MAD_SSE_HEARTBEAT_S")
-    if raw is None:
-        return _HEARTBEAT_DEFAULT_S
-    try:
-        value = float(raw)
-    except ValueError:
-        return _HEARTBEAT_DEFAULT_S
-    if value <= 0:
-        return _HEARTBEAT_DEFAULT_S
-    return value
+    return load_settings().sse_heartbeat_s.value
 
 
 async def _fetch_next_frame(aiter: AsyncIterator[str]) -> str:

@@ -1,21 +1,22 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from mad.core.config import settings as _settings
 from mad.core.events.domain.event import Event, event_from_persisted
 from mad.core.events.domain.event_id import new_event_id
 
 #: Environment variable an operator sets to relocate the session log directory.
-SESSIONS_DIR_ENV = "MAD_SESSIONS_DIR"
+#: Canonical spelling lives in the central settings module (issue #97).
+SESSIONS_DIR_ENV = _settings.SESSIONS_DIR_ENV
 
 #: Fallback used when ``MAD_SESSIONS_DIR`` is unset (local dev unchanged).
-DEFAULT_SESSIONS_DIR = Path("sessions")
+DEFAULT_SESSIONS_DIR = Path(_settings.DEFAULT_SESSIONS_DIR)
 
-RETENTION_DAYS_ENV = "MAD_SESSIONS_RETENTION_DAYS"
+RETENTION_DAYS_ENV = _settings.SESSIONS_RETENTION_DAYS_ENV
 
 # ---------------------------------------------------------------------------
 # Free functions (module-level API)
@@ -30,11 +31,11 @@ def sessions_dir() -> Path:
     falling back to ``Path("sessions")`` when the variable is unset or
     blank. This is intentionally a function, not a module-import-time
     constant: importing the module must not freeze the resolution.
+
+    The env read is delegated to the central settings module (issue #97),
+    which preserves the "blank is unset" + fresh-per-call semantics.
     """
-    override = os.environ.get(SESSIONS_DIR_ENV, "").strip()
-    if override:
-        return Path(override)
-    return DEFAULT_SESSIONS_DIR
+    return Path(_settings.load_settings().sessions_dir.value)
 
 
 def ensure_sessions_dir() -> None:
@@ -87,15 +88,10 @@ def resolve_retention_days() -> int | None:
     values all resolve to ``None``, which the caller treats as "retention
     disabled — keep every log forever" (the safe default; no behavior change
     over the historical never-purge contract, issue #14).
+
+    Delegated to the central settings module (issue #97).
     """
-    raw = os.environ.get(RETENTION_DAYS_ENV)
-    if raw is None:
-        return None
-    try:
-        days = int(raw)
-    except ValueError:
-        return None
-    return days if days > 0 else None
+    return _settings.load_settings().sessions_retention_days.value
 
 
 def _last_event_timestamp(path: Path) -> datetime | None:
