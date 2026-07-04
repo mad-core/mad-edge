@@ -113,6 +113,14 @@ These run on the asyncio loop or at app startup, not behind a route.
 | `bootstrap_deployment_model_config` | Replay the reserved model log into the live holder. | App startup | None (rebuilds the deployment model config). |
 | `bootstrap_deployment_effort_config` | Replay the reserved effort log into the live holder. | App startup | None (rebuilds the deployment effort config). |
 
+## Configuration (issue #107)
+
+Source: `src/mad/core/config/use_cases/get_config.py`, `.../routes/config.py`. Read-only introspection of the server's effective operational configuration, resolved by the central settings module (`src/mad/core/config/settings.py`, #97).
+
+| Operation | Description | Input surface | Side effects |
+|---|---|---|---|
+| `GetConfigUseCase` | Return the effective operational configuration: each `MAD_*` tunable as `{value, source}` (`env` \| `default`) plus credential **presence** booleans. Credential values are never returned — not even masked (hard rule 2). Read fresh from the environment on each call; no write path, no hot reload. | `GET /v1/config` / `mad_get_config` | None (read-only). |
+
 ## Internal hook ingestion
 
 Source: `src/mad/adapters/inbound/internal/hooks_router.py`. A separate

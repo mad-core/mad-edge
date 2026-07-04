@@ -14,10 +14,12 @@ groups, plus the ports between them.
 Mad is a hexagonal (ports-and-adapters) application. Source lives under
 `src/mad/` and splits cleanly in two:
 
-- `src/mad/core/` — framework-free application core. Three bounded contexts,
-  each split into `domain/` (entities, value objects, exceptions), `ports/`
-  (Protocol interfaces), and `use_cases/` (application logic). No FastAPI, no
-  `subprocess`, no `mad.adapters` imports (hard rule 4).
+- `src/mad/core/` — framework-free application core. The three primary bounded
+  contexts (sessions, events, orchestration) each split into `domain/` (entities,
+  value objects, exceptions), `ports/` (Protocol interfaces), and `use_cases/`
+  (application logic), plus a thin `config` context (a framework-free settings
+  module + a single read use case, #97). No FastAPI, no `subprocess`, no
+  `mad.adapters` imports (hard rule 4).
 - `src/mad/adapters/` — all I/O. `inbound/` adapters drive the core
   (`http`, `mcp`, `internal`); `outbound/` adapters implement the core's ports
   (`persistence`, `agents`, `events`, `orchestration`).
@@ -110,7 +112,7 @@ dispatch policies, model/effort/timeout resolution, rate-limit retry
 
 | Adapter | Path | Responsibility / boundary |
 |---|---|---|
-| `http` | `inbound/http/` | Public FastAPI app. `app.py::create_app(...)` wires dependencies, registers exception handlers (mapping domain exceptions to HTTP status), mounts routers, and mounts the MCP app at `/mcp`. `routes/` holds `sessions`, `events`, `orchestration`, `providers`, `workflows`. `dependencies.py` is the composition root. `asgi.py` exposes `app = create_app()` for tooling (e.g. the OpenAPI generator). Request/response bodies are typed Pydantic models (hard rule 9). |
+| `http` | `inbound/http/` | Public FastAPI app. `app.py::create_app(...)` wires dependencies, registers exception handlers (mapping domain exceptions to HTTP status), mounts routers, and mounts the MCP app at `/mcp`. `routes/` holds `sessions`, `events`, `orchestration`, `providers`, `workflows`, `config`. `dependencies.py` is the composition root. `asgi.py` exposes `app = create_app()` for tooling (e.g. the OpenAPI generator). Request/response bodies are typed Pydantic models (hard rule 9). |
 | `mcp` | `inbound/mcp/server.py` | `build_mcp_server(...)` returns a `FastMCP` exposing one tool per request/response HTTP route (hard rule 13, ADR-0010/0012). Each tool calls the same use case, with the same in-process dependencies, and returns the same Pydantic model — no logic beyond the route. Streaming SSE is the sole carve-out. |
 | `internal` | `inbound/internal/` | Internal FastAPI app for claude-cli hook ingestion (ADR-0008). `create_internal_app(event_emitter)` is UDS-bound and never exposes docs/openapi; `hooks_router.py` receives `forward.sh` payloads at `POST /_internal/hooks`, scrubs credential-shaped strings, and re-emits as `agent.<provider>.hook.*` through the shared `EventEmitter` so hook events appear on `GET /v1/events/stream`. |
 
