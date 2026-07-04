@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mad-edge"
-version = "0.6.0"
+version = "0.6.1"
 description = "Self-hosted infrastructure that provisions isolated workspaces, clones GitHub repos, and launches external coding agents (Claude Code CLI) — streaming their stdout as agent.output SSE events. Not an orchestrator: no tool-call parsing, no conversation loop."
 readme = "README.md"
 license = { file = "LICENSE" }

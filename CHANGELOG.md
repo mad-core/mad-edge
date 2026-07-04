@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.6.1 (2026-07-04)
+
+### Features
+
+- **http**: Add read-only GET /v1/config with mad_get_config MCP parity
+  ([`ece94c4`](https://github.com/mad-core/mad-edge/commit/ece94c403c5be7257704a42260a13e4c6e185ada))
+
+
 ## v0.6.0 (2026-07-04)
 
 ### Features
