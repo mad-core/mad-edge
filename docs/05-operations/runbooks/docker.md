@@ -36,11 +36,11 @@ the repo** — mounted at runtime, gitignored on the host.
 The `Dockerfile` builds a self-contained Mad runtime on `node:20-slim` bundling,
 in one place:
 
-- the **`mad-bros`** package (the `mad` console script), in an isolated venv,
+- the **`mad-edge`** package (the `mad-edge` console script), in an isolated venv,
 - the **`claude`** Code CLI and the **`opencode`** CLI (the launcher binaries),
 - the **`gh`** CLI and **`git`**.
 
-It runs as an unprivileged `mad` user and starts `mad serve`, which exposes the
+It runs as an unprivileged `mad` user and starts `mad-edge serve`, which exposes the
 public HTTP/MCP API on container port **8000** and the internal hook-ingestion
 socket in one process.
 
@@ -48,7 +48,7 @@ The image targets **arm64** (Raspberry Pi) and **amd64**. Build a multi-arch
 image with buildx:
 
 ```bash
-docker buildx build --platform linux/arm64,linux/amd64 -t mad:0.5.11 .
+docker buildx build --platform linux/arm64,linux/amd64 -t mad-edge:0.6.0 .
 ```
 
 > **Token hygiene (CLAUDE.md hard rule 2).** No secret is ever baked into an
@@ -272,7 +272,7 @@ directory and a different port**, so instances never collide.
 
 ## Updating to a new Mad version
 
-The image installs `mad-bros` at build time, pinned by the `MAD_VERSION` build
+The image installs `mad-edge` at build time, pinned by the `MAD_VERSION` build
 arg (empty = latest published release). To move an instance to a newer release:
 
 ```bash
@@ -281,7 +281,7 @@ sed -i 's/^MAD_VERSION=.*/MAD_VERSION=0.5.12/' .env      # or edit by hand
 docker compose -f compose.example.yml up -d --build
 ```
 
-The image tag follows `MAD_VERSION` (`mad:${MAD_VERSION:-latest}`), so a pinned
+The image tag follows `MAD_VERSION` (`mad-edge:${MAD_VERSION:-latest}`), so a pinned
 version gives you a versioned, reproducible image per instance. Workspaces,
 credentials, and the Claude login all persist across the upgrade because they
 live in the host `./instances/<name>/` mounts, not in the image.

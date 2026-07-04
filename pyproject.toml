@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "mad-bros"
+name = "mad-edge"
 version = "0.5.25"
 description = "Self-hosted infrastructure that provisions isolated workspaces, clones GitHub repos, and launches external coding agents (Claude Code CLI) — streaming their stdout as agent.output SSE events. Not an orchestrator: no tool-call parsing, no conversation loop."
 readme = "README.md"
@@ -48,11 +48,11 @@ dev = [
 ]
 
 [project.scripts]
-mad = "mad.entry_points.cli:main"
+mad-edge = "mad.entry_points.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/mad-core/mad"
-Issues = "https://github.com/mad-core/mad/issues"
+Homepage = "https://github.com/mad-core/mad-edge"
+Issues = "https://github.com/mad-core/mad-edge/issues"
 
 
 
@@ -193,7 +193,7 @@ strict = true
 branch = true
 source = ["mad"]
 omit = [
-  # Thin uvicorn launcher; only exercised by `mad serve` / `make serve`,
+  # Thin uvicorn launcher; only exercised by `mad-edge serve` / `make serve`,
   # not by the test suite. Excluded so it does not drag down the
   # full-suite coverage threshold.
   "src/mad/entry_points/cli.py",

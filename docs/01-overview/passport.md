@@ -17,8 +17,8 @@ start at [`docs/README.md`](../README.md) and the architecture narrative in
 |---|---|
 | Service | `mad` |
 | Domain | `backend` |
-| Distributed package | `mad-bros` (import package `mad`) |
-| Console script | `mad` (`mad.entry_points.cli:main`) |
+| Distributed package | `mad-edge` (import package `mad`) |
+| Console script | `mad-edge` (`mad.entry_points.cli:main`) |
 | Source of truth | repo |
 | Language / runtime | Python `>=3.11` |
 | Framework | FastAPI + uvicorn (ASGI) |
@@ -41,7 +41,7 @@ workflows, via the `orchestration` surface listed below.
 | HTTP | `/v1` (`sessions`, `events`, `orchestration`, `providers`) | Strongly-typed Pydantic request/response models (hard rule 9). Contract: [`03-contracts/api.md`](../03-contracts/api.md) |
 | SSE | `GET /v1/events/stream` | Cross-session event stream (ADR-0004). Operator telemetry, not an MCP tool |
 | MCP | mounted at `/mcp` | Streamable-HTTP; tools call the same use cases in-process, at parity with HTTP (hard rule 13, ADR-0010/0012) |
-| CLI | `mad serve` | uvicorn launcher console script |
+| CLI | `mad-edge serve` | uvicorn launcher console script |
 | Internal | `POST /_internal/hooks` (UDS) | claude-cli hook ingestion, not part of the public profile (ADR-0008) |
 
 ## Agent providers

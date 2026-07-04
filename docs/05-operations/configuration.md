@@ -64,11 +64,11 @@ These configure the Docker image build and container wiring in `compose.example.
 |---|---|---|---|---|---|
 | `MAD_INSTANCE` | Instance name — drives the container name and the host bind-mount paths (`./instances/<MAD_INSTANCE>/…`), giving each instance its own workspace/credential dirs. | string | `default` | No | `compose.example.yml` (container name, volume paths) |
 | `MAD_HOST_PORT` | Host port published for this instance's HTTP/MCP API (container always listens on `8000`). | int (port) | `8080` | No | `compose.example.yml` `ports:` (`${MAD_HOST_PORT}:8000`) |
-| `MAD_VERSION` | `mad-bros` version baked into the image; empty means latest published release. | string | empty (latest) | No | `compose.example.yml` `image:` tag and build `args:` |
+| `MAD_VERSION` | `mad-edge` version baked into the image; empty means latest published release. | string | empty (latest) | No | `compose.example.yml` `image:` tag and build `args:` |
 | `PUID` | Host operator UID; the container user is created with it so the bind-mounted workspace stays writable and host-owned. | int | `1000` | No | `compose.example.yml` build `args:` |
 | `PGID` | Host operator GID (pairs with `PUID`). | int | `1000` | No | `compose.example.yml` build `args:` |
-| `HOST` | Bind address for the local `make serve` / `uvicorn` (and the `mad serve --host` flag). Make variable, not an env var read by code. | string | `0.0.0.0` | No | `Makefile:6`, `make serve`; `src/mad/entry_points/cli.py` (`--host`) |
-| `PORT` | Listen port for the local `make serve` / `uvicorn` (and the `mad serve --port` flag). Make variable, not an env var read by code. | int (port) | `8000` | No | `Makefile:7`, `make serve`; `src/mad/entry_points/cli.py` (`--port`) |
+| `HOST` | Bind address for the local `make serve` / `uvicorn` (and the `mad-edge serve --host` flag). Make variable, not an env var read by code. | string | `0.0.0.0` | No | `Makefile:6`, `make serve`; `src/mad/entry_points/cli.py` (`--host`) |
+| `PORT` | Listen port for the local `make serve` / `uvicorn` (and the `mad-edge serve --port` flag). Make variable, not an env var read by code. | int (port) | `8000` | No | `Makefile:7`, `make serve`; `src/mad/entry_points/cli.py` (`--port`) |
 
 Note: compose pins `MAD_WORKSPACE_DIR=/workspaces` in its `environment:` block, which overrides any value set in `.env`, so the container's workspace path is fixed by contract — relocate data on the host by changing the bind-mount source instead.
 

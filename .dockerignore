@@ -1,4 +1,4 @@
-# The image installs `mad-bros` from PyPI and COPYies nothing from the build
+# The image installs `mad-edge` from PyPI and COPYies nothing from the build
 # context, so this context can stay tiny. These rules also guarantee no secret
 # or local host state is ever sent to the Docker daemon / baked into a layer
 # (CLAUDE.md hard rule 2).
