@@ -578,7 +578,7 @@ docs:
     Re-author when any file under `.github/workflows/` is added, removed, or
     materially changed. Keep the job/step listing in sync with `gen_docs ci-cd`
     and explain what each gate enforces (hard rule 12 versioning policy).
-  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
+  acknowledged_at_commit: 8c05c587b28b2de4ca545fcae78e861f7bf1fcfa
 # `configuration` is heuristic (not the `config` script): Mad has no central
 # settings module — env vars are read ad hoc via os.environ (centralization
 # tracked in #97), so the deterministic config generator has nothing to parse.
@@ -641,7 +641,7 @@ docs:
     the instance/volume model, or when release.yml/testpypi-preview.yml change
     the publish flow. Cross-reference docs/05-operations/runbooks/docker.md and
     docs/05-operations/runbooks/cloudflare-tunnel.md.
-  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
+  acknowledged_at_commit: 8c05c587b28b2de4ca545fcae78e861f7bf1fcfa
 - path: docs/05-operations/local-dev.md
   section: operations
   kind: heuristic
@@ -851,7 +851,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when `testpypi-preview.yml` changes its job structure (build/publish/verify), the `TESTPYPI_ENABLED` gate, or the versioning scheme (`<base>.dev<run_id>`).
-  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
+  acknowledged_at_commit: 8c05c587b28b2de4ca545fcae78e861f7bf1fcfa
 
 # ---- 06 flow-participation ---------------------------------------------
 - path: docs/06-flow-participation/README.md
