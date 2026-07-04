@@ -388,7 +388,7 @@ docs:
     Re-author when a runtime dependency in `pyproject.toml` changes, when a new
     outbound adapter (launcher provider) appears under `outbound/agents/`, or
     when the spawn contract / timeout handling in a launcher changes.
-  acknowledged_at_commit: 13efb04a7db2cca88d9f8091f9309ebc0dfada72
+  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
 
 # ---- 04 conventions -----------------------------------------------------
 - path: docs/04-conventions/api-design.md
@@ -502,7 +502,7 @@ docs:
     Re-author when `[tool.ruff]`, `[tool.mypy]`, `[tool.importlinter]`, or
     `[tool.coverage]` in pyproject.toml change, or when a pre-commit hook is
     added/removed. Cross-reference ADR-0002.
-  acknowledged_at_commit: 13efb04a7db2cca88d9f8091f9309ebc0dfada72
+  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
 - path: docs/04-conventions/testing-strategy.md
   section: conventions
   kind: heuristic
@@ -524,7 +524,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when test-layer layout under `tests/` reorganizes, when coverage thresholds in CI/pyproject change, when docs/04-conventions/testing-heuristics.md changes the eight rules, or when new AgentLauncher or orchestration doubles are added to tests/support/. Document all shared doubles explicitly by type and purpose; Fakes live in tests/support (ADR-0003).
-  acknowledged_at_commit: 13efb04a7db2cca88d9f8091f9309ebc0dfada72
+  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
 - path: docs/04-conventions/testing-heuristics.md
   section: conventions
   kind: manual
@@ -574,7 +574,7 @@ docs:
     Re-author when any file under `.github/workflows/` is added, removed, or
     materially changed. Keep the job/step listing in sync with `gen_docs ci-cd`
     and explain what each gate enforces (hard rule 12 versioning policy).
-  acknowledged_at_commit: 13efb04a7db2cca88d9f8091f9309ebc0dfada72
+  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
 # `configuration` is heuristic (not the `config` script): Mad has no central
 # settings module — env vars are read ad hoc via os.environ (centralization
 # tracked in #97), so the deterministic config generator has nothing to parse.
@@ -606,7 +606,7 @@ docs:
     `.env.example`. Until centralization (#97) lands, the tables in the doc are
     the authoritative inventory; once a settings module exists, switch this
     entry back to `produces: [gen_docs, config]`.
-  acknowledged_at_commit: 13efb04a7db2cca88d9f8091f9309ebc0dfada72
+  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
 - path: docs/05-operations/deployment.md
   section: operations
   kind: heuristic
@@ -632,7 +632,7 @@ docs:
     the instance/volume model, or when release.yml/testpypi-preview.yml change
     the publish flow. Cross-reference docs/05-operations/runbooks/docker.md and
     docs/05-operations/runbooks/cloudflare-tunnel.md.
-  acknowledged_at_commit: 13efb04a7db2cca88d9f8091f9309ebc0dfada72
+  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
 - path: docs/05-operations/local-dev.md
   section: operations
   kind: heuristic
@@ -652,7 +652,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when a Makefile target (install/serve/test/clean) changes, when prerequisites in README change (especially env var resolution logic), when `.env.example` gains/removes a required variable, or when environment variable defaults or fallback behaviors are clarified in README.
-  acknowledged_at_commit: c5b334d721cd5724a1bf7312fc4df3b0ab6411b3
+  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
 - path: docs/05-operations/scripts.md
   section: operations
   kind: deterministic
@@ -805,7 +805,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when the Dockerfile's base image, entrypoint, or build args change, when `compose.example.yml` changes the volume/instance/port model, or when `.env.example` gains/drops a variable this runbook documents.
-  acknowledged_at_commit: 13efb04a7db2cca88d9f8091f9309ebc0dfada72
+  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
 - path: docs/05-operations/runbooks/sandbox-bwrap.md
   section: operations
   kind: manual
@@ -842,7 +842,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when `testpypi-preview.yml` changes its job structure (build/publish/verify), the `TESTPYPI_ENABLED` gate, or the versioning scheme (`<base>.dev<run_id>`).
-  acknowledged_at_commit: 13efb04a7db2cca88d9f8091f9309ebc0dfada72
+  acknowledged_at_commit: 9e6d7aac80b43309ad196f898b971f78ebcab614
 
 # ---- 06 flow-participation ---------------------------------------------
 - path: docs/06-flow-participation/README.md
