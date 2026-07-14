@@ -96,6 +96,7 @@ src/mad/
 │   │   │   │   ├── rate_limit.py
 │   │   │   │   └── workflow.py
 │   │   │   ├── __init__.py
+│   │   │   ├── auto_sync_config.py
 │   │   │   ├── deployment_policy.py
 │   │   │   ├── dispatch_policy.py
 │   │   │   ├── effort_config.py

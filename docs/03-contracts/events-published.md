@@ -98,6 +98,7 @@ the post-run auto-sync run.
 | `session.status_idle` | Subprocess exits 0 (successful turn). | `type` (`"session.status_idle"`), `stop_reason` (`"end_turn"`) | `claude_cli.py`, `opencode.py` |
 | `session.error` | Non-zero exit, timeout, or cancellation. | `type` (`"session.error"`), `error` (scrubbed), `exit_code`; claude_cli also adds `api_error_status` and `request_id` when present | `claude_cli.py`, `opencode.py` |
 | `agent.autosync.rate_limited` | Post-run auto-sync hits a rate limit; non-terminal best-effort signal. | `reason` | `send_user_message.py` (`_run_launcher`) |
+| `agent.autosync.skipped` | Post-run auto-sync is skipped because the auto_sync gate is False; non-terminal decision signal. | `reason` | `send_user_message.py` (`_run_launcher`) |
 
 `session.error` is also emitted directly by the `send_user_message` use case in
 two cases that bypass the launcher's own terminal emit: a rate limit reached on
@@ -108,7 +109,10 @@ rate limit on the orchestration path, the launcher raises `RateLimitError`
 loop (see `task.retrying` / `task.failed` below). Post-run auto-sync rate limits
 are special: they emit `agent.autosync.rate_limited` (non-terminal, best-effort)
 instead of `session.error`, since the primary work already succeeded and
-re-running the task would duplicate it (issue #87).
+re-running the task would duplicate it (issue #87). Separately, when the
+auto_sync gate resolves to False (disabled at the session or deployment level,
+issue #109), the post-run auto-sync run is skipped entirely and
+`agent.autosync.skipped` is emitted as a non-terminal decision signal.
 
 ## Orchestration: task queue events
 

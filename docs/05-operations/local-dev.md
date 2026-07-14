@@ -71,6 +71,7 @@ local development:
 | `MAD_SESSIONS_DIR` | Where per-session JSONL event logs are written (used verbatim, no `~`/`$VAR` expansion) | unset/blank → `./sessions` |
 | `MAD_SESSIONS_RETENTION_DAYS` | TTL purge of old session logs at startup; unset/`0`/negative keeps forever | keep forever |
 | `MAD_AGENT_TIMEOUT_S` | Operator-wide wall-clock budget for an agent run; per-session `timeout_s` override on the create request takes precedence | `600` (resolution: per-session > env > 600) |
+| `MAD_AUTO_SYNC` | Post-run auto-sync: publishes uncommitted work to a `mad/<session_id>` branch and opens a PR after each agent run (#8). Set to `false` to disable deployment-wide (#109) | `true` (resolution: task > session > env > true) |
 | `MAD_CLAUDE_CLI_BIN` / `MAD_OPENCODE_BIN` | Override the launcher binary | `claude` / `opencode` |
 | `MAD_HOOK_SOCKET` | Path for the internal Unix Domain Socket used for hook ingestion | `$XDG_RUNTIME_DIR/mad/hooks.sock` or `/tmp/mad/hooks.sock` |
 | `MAD_SSE_HEARTBEAT_S` | SSE keep-alive heartbeat interval for `GET /v1/events/stream` | `15` |

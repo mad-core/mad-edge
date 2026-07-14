@@ -64,7 +64,7 @@ The primary bounded context: the lifecycle of a single agent invocation.
 
 | Module | Path | Responsibility / boundary |
 |---|---|---|
-| `Session` entity | `domain/entities/session.py` | Mutable aggregate root. Status machine `created → running → idle/error`, `any → deleted`; carries model/effort/timeout/priority/dispatch-policy and `last_conversation_id`. Pure data + transitions, no I/O. |
+| `Session` entity | `domain/entities/session.py` | Mutable aggregate root. Status machine `created → running → idle/error`, `any → deleted`; carries model/effort/timeout/priority/dispatch-policy/auto-sync and `last_conversation_id`. Pure data + transitions, no I/O. |
 | `MountPath` value object | `domain/value_objects/mount_path.py` | Validated `/workspace`-rooted path; raises `PathTraversalError` on construction (hard rule 3). |
 | Domain exceptions | `domain/exceptions/base.py` | `DomainError`, `PathTraversalError`, `SessionNotFound`. |
 | `rehydrate` | `domain/rehydrate.py` | Rebuild a `Session` from its persisted JSONL event log (hard rule 6). |
@@ -97,12 +97,12 @@ dispatch policies, model/effort/timeout resolution, rate-limit retry
 
 | Module | Path | Responsibility / boundary |
 |---|---|---|
-| `Task` entity | `domain/task.py` | Frozen unit of work; `content` is opaque (never inspected, hard rule 1). State is not on the entity — it lives in the projection / event log. |
+| `Task` entity | `domain/task.py` | Frozen unit of work; `content` is opaque (never inspected, hard rule 1). Carries model/effort/conversation-mode overrides and post-run auto-sync gate (issue #109). State is not on the entity — it lives in the projection / event log. |
 | `Workflow` entity | `domain/workflow.py` | Validated DAG of `WorkflowStep`s, each with `depends_on` dependencies. Immutable after creation; structure lives in the event log. Steps may inherit predecessor repos via `from_step` (ref mode: sha or branch). |
 | `WorkflowStep` entity | `domain/workflow.py` | Single node in a workflow DAG: one session configuration plus an opaque task prompt. Carries mounts, dependencies, and session tuning (model/effort/timeout). |
 | `WorkflowMount` value object | `domain/workflow.py` | Resource mount inside a step's session: github repo (explicit URL or inherited `from_step`) or inline file content. |
 | `GitResult` value object | `domain/git_result.py` | Post-run git state snapshot: head SHA, branch, commits since baseline, dirty/pushed flags. Captured by the dispatcher for task attribution. |
-| Domain policies & configs | `domain/dispatch_policy.py`, `domain/deployment_policy.py`, `domain/model_config.py`, `domain/effort_config.py`, `domain/timeout_config.py`, `domain/retry_schedule.py`, `domain/ordering.py` | Pure policy logic: window/immediate/manual dispatch predicates, deployment-default resolution, model/effort/timeout precedence, exponential backoff, cross-session ordering. |
+| Domain policies & configs | `domain/auto_sync_config.py`, `domain/dispatch_policy.py`, `domain/deployment_policy.py`, `domain/model_config.py`, `domain/effort_config.py`, `domain/timeout_config.py`, `domain/retry_schedule.py`, `domain/ordering.py` | Pure policy logic: post-run auto-sync gate + precedence resolution (issue #109), window/immediate/manual dispatch predicates, deployment-default resolution, model/effort/timeout precedence, exponential backoff, cross-session ordering. |
 | Domain exceptions | `domain/exceptions/base.py`, `domain/exceptions/rate_limit.py`, `domain/exceptions/workflow.py` | `TaskNotFound`, `TaskAlreadyDispatched`, `SessionHasInFlightTask`, `RateLimitError`, `InvalidWorkflow`. |
 | Ports | `ports/clock.py`, `ports/model_catalog.py`, `ports/task_queue.py`, `ports/task_projection.py`, `ports/git_inspector.py`, `ports/workflow_read_model.py` | Time source, model discovery, read-side task queue, writable task projection, git workspace observer, and workflow status projection (see Ports below). |
 | `Dispatcher` | `use_cases/dispatcher.py` | The lifespan-managed asyncio loop. Single in-flight task across all sessions (ADR-0009 Decision 4), orphan recovery on restart (Decision 5), policy gating, rate-limit retry with backoff, work-window deferral, and task-to-step binding for workflows. |
