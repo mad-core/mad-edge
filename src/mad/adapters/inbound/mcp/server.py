@@ -269,6 +269,7 @@ def build_mcp_server(
                 model=payload.model,
                 effort=payload.effort,
                 timeout_s=payload.timeout_s,
+                auto_sync=payload.auto_sync,
             )
         )
         return output.session.response
@@ -416,6 +417,7 @@ def build_mcp_server(
                 model=payload.model,
                 effort=payload.effort,
                 conversation_mode=payload.conversation_mode,
+                auto_sync=payload.auto_sync,
             )
         )
         return EnqueueTaskResponse(

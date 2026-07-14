@@ -130,6 +130,17 @@ class EnqueueTaskRequest(BaseModel):
             " emits ``agent.conversation_resume_skipped`` when no id is stored yet."
         ),
     )
+    auto_sync: bool | None = Field(
+        default=None,
+        description=(
+            "Optional per-task toggle for the post-run auto-sync step, which publishes"
+            " any leftover uncommitted work to a `mad/<session_id>` branch and opens a"
+            " PR. Set `false` when THIS task manages its own named branch/PR —"
+            " auto-sync cannot see that branch and would open a duplicate PR next to"
+            " it. Resolution order: this value > the session `auto_sync` > the"
+            " `MAD_AUTO_SYNC` env var > `true`. `null` (default) inherits."
+        ),
+    )
 
 
 class EnqueueTaskResponse(BaseModel):
@@ -156,6 +167,7 @@ class TaskResponse(BaseModel):
     model: str | None = None
     effort: str | None = None
     conversation_mode: Literal["new", "resume"] = "new"
+    auto_sync: bool | None = None
     status: Literal["dispatched", "retrying"] = Field(
         default="dispatched",
         description=(
@@ -362,6 +374,7 @@ async def enqueue_task(
             model=payload.model,
             effort=payload.effort,
             conversation_mode=payload.conversation_mode,
+            auto_sync=payload.auto_sync,
         )
     )
     return EnqueueTaskResponse(
@@ -404,6 +417,7 @@ async def list_tasks(session_id: str, request: Request) -> ListTasksResponse:
                 model=t.model,
                 effort=t.effort,
                 conversation_mode=t.conversation_mode,
+                auto_sync=t.auto_sync,
             )
             for t in output.queued
         ],
@@ -417,6 +431,7 @@ async def list_tasks(session_id: str, request: Request) -> ListTasksResponse:
                 model=output.in_flight.model,
                 effort=output.in_flight.effort,
                 conversation_mode=output.in_flight.conversation_mode,
+                auto_sync=output.in_flight.auto_sync,
                 status="retrying" if ri is not None else "dispatched",
                 retry_info=ri,
             )

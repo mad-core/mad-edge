@@ -18,6 +18,10 @@ from pathlib import Path
 from typing import Any
 
 from mad.core.events.emitter import EventEmitter
+from mad.core.orchestration.domain.auto_sync_config import (
+    env_auto_sync,
+    resolve_effective_auto_sync,
+)
 from mad.core.orchestration.domain.effort_config import (
     DeploymentEffortConfig,
     resolve_effective_effort,
@@ -101,6 +105,13 @@ class SendUserMessageUseCase:
             session_timeout_s=session.timeout_s,
             env_timeout_s=env_timeout_s(),
         )
+        # /messages is the ad-hoc path — it has no task, so there is no task-level
+        # override to consult (issue #109).
+        effective_auto_sync = resolve_effective_auto_sync(
+            task_auto_sync=None,
+            session_auto_sync=session.auto_sync,
+            env_auto_sync=env_auto_sync(),
+        )
         # Fire-and-forget: emitter handles both persistence and publish.
         asyncio.create_task(
             self._emitter.emit(
@@ -117,6 +128,7 @@ class SendUserMessageUseCase:
                 model=effective_model,
                 effort=effective_effort,
                 timeout_s=effective_timeout,
+                auto_sync=effective_auto_sync,
             )
         )
 
@@ -132,6 +144,7 @@ async def _run_launcher(
     effort: str | None = None,
     timeout_s: float | None = None,
     conversation_mode: str = "new",
+    auto_sync: bool = True,
 ) -> None:
     """Internal coroutine: run the launcher and handle lifecycle events.
 
@@ -167,6 +180,14 @@ async def _run_launcher(
     When resuming, ``session.last_conversation_id`` is passed to the
     launcher.  If no ID is stored yet, falls back to ``"new"`` and emits
     ``agent.conversation_resume_skipped``.
+
+    ``auto_sync`` is the resolved post-run publish gate (issue #109): task >
+    session > ``MAD_AUTO_SYNC`` env > ``True``. When ``False``, the post-run
+    auto-sync run is skipped ENTIRELY — no second ``launcher.run``, so no
+    ``mad/<session_id>`` branch and no PR can be created. This is the
+    deterministic opt-out for tasks that manage their own named branch/PR, which
+    auto-sync cannot see and would otherwise duplicate. A non-terminal
+    ``agent.autosync.skipped`` event records the decision for operators.
     """
     await emitter.emit(session_id, "session.status_running")
     session.mark_running()
@@ -236,56 +257,65 @@ async def _run_launcher(
             session.mark_error()
         primary_failure = exc
 
-    # Snapshot the primary run's conversation ID before the auto-sync run.
-    # The auto-sync run starts its own Claude subprocess which fires a
-    # SessionStart hook that, via on_emit, would overwrite
-    # session.last_conversation_id with the auto-sync's ID. Snapshotting
-    # here and restoring below preserves the primary conversation ID.
-    primary_conversation_id = session.last_conversation_id
-
-    # Post-run auto-sync (issue #8): always launch a second agent run in
-    # the same workspace with a fixed instruction prompt that decides
-    # whether to branch / commit / push / open a PR. Mad does not
-    # interpret the run's output (hard rule 1); events are emitted as
-    # agent.output like any other run. Failures here MUST NOT crash the
-    # session task — they are surfaced as a session.error event.
+    # Post-run auto-sync (issue #8): launch a second agent run in the same
+    # workspace with a fixed instruction prompt that decides whether to
+    # branch / commit / push / open a PR. Mad does not interpret the run's
+    # output (hard rule 1); events are emitted as agent.output like any
+    # other run. Failures here MUST NOT crash the session task — they are
+    # surfaced as a session.error event.
+    #
+    # The gate (issue #109): when ``auto_sync`` resolves to False the second
+    # run never starts, so no ``mad/<session_id>`` branch and no PR can be
+    # created. A task that manages its own named branch/PR sets this; auto-sync
+    # cannot see that branch and would otherwise open a duplicate PR next to it.
     auto_sync_failure: Exception | None = None
-    try:
-        auto_sync_prompt = build_auto_sync_prompt(session_id, session.base_branch)
-        await launcher.run(
-            session_id=session_id,
-            prompt=auto_sync_prompt,
-            workspace=workspace,
-            emit=emit,
-            model=model,
-            effort=effort,
-            timeout_s=timeout_s,
-        )
-    except RateLimitError as exc:
-        # The primary run already succeeded; the post-run auto-sync is a
-        # best-effort publish step. A rate limit HERE must NOT propagate as
-        # a RateLimitError, because the dispatcher's retry loop would catch
-        # it and re-run _run_launcher from the top — re-executing the
-        # already-successful primary prompt (issue #87). Surface a distinct,
-        # non-terminal signal and swallow it: do NOT emit session.error, do
-        # NOT mark_error, and (crucially) do NOT store it in
-        # auto_sync_failure so it is never re-raised. The dispatcher then
-        # records task.completed for the primary work that did succeed.
-        await emitter.emit(
-            session_id,
-            "agent.autosync.rate_limited",
-            {"reason": exc.reason},
-        )
-    except Exception as exc:
-        await emitter.emit(
-            session_id, "session.error", {"error": f"auto-sync failed: {exc}"}
-        )
-        session.mark_error()
-        auto_sync_failure = exc
+    if not auto_sync:
+        # Record the skip rather than leaving an unexplained absence in the log.
+        # Non-terminal: the session's status is whatever the primary run left.
+        await emitter.emit(session_id, "agent.autosync.skipped", {"reason": "disabled"})
+    else:
+        # Snapshot the primary run's conversation ID before the auto-sync run.
+        # The auto-sync run starts its own Claude subprocess which fires a
+        # SessionStart hook that, via on_emit, would overwrite
+        # session.last_conversation_id with the auto-sync's ID. Snapshotting
+        # here and restoring below preserves the primary conversation ID.
+        primary_conversation_id = session.last_conversation_id
+        try:
+            auto_sync_prompt = build_auto_sync_prompt(session_id, session.base_branch)
+            await launcher.run(
+                session_id=session_id,
+                prompt=auto_sync_prompt,
+                workspace=workspace,
+                emit=emit,
+                model=model,
+                effort=effort,
+                timeout_s=timeout_s,
+            )
+        except RateLimitError as exc:
+            # The primary run already succeeded; the post-run auto-sync is a
+            # best-effort publish step. A rate limit HERE must NOT propagate as
+            # a RateLimitError, because the dispatcher's retry loop would catch
+            # it and re-run _run_launcher from the top — re-executing the
+            # already-successful primary prompt (issue #87). Surface a distinct,
+            # non-terminal signal and swallow it: do NOT emit session.error, do
+            # NOT mark_error, and (crucially) do NOT store it in
+            # auto_sync_failure so it is never re-raised. The dispatcher then
+            # records task.completed for the primary work that did succeed.
+            await emitter.emit(
+                session_id,
+                "agent.autosync.rate_limited",
+                {"reason": exc.reason},
+            )
+        except Exception as exc:
+            await emitter.emit(
+                session_id, "session.error", {"error": f"auto-sync failed: {exc}"}
+            )
+            session.mark_error()
+            auto_sync_failure = exc
 
-    # Restore the primary run's conversation ID — the auto-sync run's
-    # SessionStart hook may have overwritten it via on_emit.
-    session.last_conversation_id = primary_conversation_id
+        # Restore the primary run's conversation ID — the auto-sync run's
+        # SessionStart hook may have overwritten it via on_emit.
+        session.last_conversation_id = primary_conversation_id
 
     if propagate_failures and primary_failure is not None:
         raise primary_failure
