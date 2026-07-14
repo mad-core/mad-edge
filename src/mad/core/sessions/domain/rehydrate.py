@@ -37,6 +37,9 @@ def rehydrate_from_events(session_id: str, events: list[dict[str, Any]]) -> Sess
     model: str | None = None
     effort: str | None = None
     timeout_s: float | None = None
+    # ``None`` means "no per-session override" — the session inherits the
+    # operator default (MAD_AUTO_SYNC > True) at resolution time (issue #109).
+    auto_sync: bool | None = None
     status = "created"
     created_at: datetime | None = None
     latest_at: datetime | None = None
@@ -54,6 +57,7 @@ def rehydrate_from_events(session_id: str, events: list[dict[str, Any]]) -> Sess
             model = event.get("model")
             effort = event.get("effort")
             timeout_s = event.get("timeout_s")
+            auto_sync = event.get("auto_sync")
         elif etype == "session.status_running":
             status = "running"
         elif etype == "session.status_idle":
@@ -106,6 +110,7 @@ def rehydrate_from_events(session_id: str, events: list[dict[str, Any]]) -> Sess
         model=model,
         effort=effort,
         timeout_s=timeout_s,
+        auto_sync=auto_sync,
         status=status,
         dispatch_policy=dispatch_policy,
         priority=priority,

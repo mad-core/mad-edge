@@ -50,6 +50,7 @@ Source = Literal["env", "default"]
 # ---------------------------------------------------------------------------
 
 AGENT_TIMEOUT_ENV = "MAD_AGENT_TIMEOUT_S"
+AUTO_SYNC_ENV = "MAD_AUTO_SYNC"
 SESSIONS_DIR_ENV = "MAD_SESSIONS_DIR"
 SESSIONS_RETENTION_DAYS_ENV = "MAD_SESSIONS_RETENTION_DAYS"
 SSE_HEARTBEAT_ENV = "MAD_SSE_HEARTBEAT_S"
@@ -72,6 +73,10 @@ AWS_ACCESS_KEY_ID_ENV = "AWS_ACCESS_KEY_ID"
 # ---------------------------------------------------------------------------
 
 DEFAULT_AGENT_TIMEOUT_S = 600.0
+#: Auto-sync stays ON by default — it is the "don't silently lose work" safety
+#: net for ad-hoc sessions (issue #109). Sessions/tasks that manage their own
+#: branch/PR opt out explicitly rather than every other session opting in.
+DEFAULT_AUTO_SYNC = True
 DEFAULT_SESSIONS_DIR = "sessions"
 DEFAULT_SSE_HEARTBEAT_S = 15.0
 DEFAULT_HOOK_SOCKET_FALLBACK_BASE = "/tmp"  # noqa: S108 — matches the historical default
@@ -111,6 +116,7 @@ class Settings:
     """Immutable snapshot of Mad's effective operational configuration."""
 
     agent_timeout_s: Setting[float]
+    auto_sync: Setting[bool]
     sessions_dir: Setting[str]
     sessions_retention_days: Setting[int | None]
     sse_heartbeat_s: Setting[float]
@@ -149,6 +155,23 @@ def _resolve_agent_timeout(raw: str | None) -> Setting[float]:
         except ValueError:
             pass
     return Setting(DEFAULT_AGENT_TIMEOUT_S, "default")
+
+
+#: Accepted spellings for the two boolean states of ``MAD_AUTO_SYNC``. Parsing is
+#: case-insensitive and whitespace-tolerant; anything else (including a blank or
+#: malformed value) falls back to :data:`DEFAULT_AUTO_SYNC` rather than crashing
+#: a launch — an operator typo must not silently disable the safety net.
+_TRUE_LITERALS: frozenset[str] = frozenset({"1", "true", "yes", "on"})
+_FALSE_LITERALS: frozenset[str] = frozenset({"0", "false", "no", "off"})
+
+
+def _resolve_auto_sync(raw: str | None) -> Setting[bool]:
+    literal = (raw or "").strip().lower()
+    if literal in _TRUE_LITERALS:
+        return Setting(True, "env")
+    if literal in _FALSE_LITERALS:
+        return Setting(False, "env")
+    return Setting(DEFAULT_AUTO_SYNC, "default")
 
 
 def _resolve_sessions_dir(raw: str | None) -> Setting[str]:
@@ -238,6 +261,7 @@ def load_settings(environ: dict[str, str] | None = None) -> Settings:
 
     return Settings(
         agent_timeout_s=_resolve_agent_timeout(env.get(AGENT_TIMEOUT_ENV)),
+        auto_sync=_resolve_auto_sync(env.get(AUTO_SYNC_ENV)),
         sessions_dir=_resolve_sessions_dir(env.get(SESSIONS_DIR_ENV)),
         sessions_retention_days=_resolve_retention_days(env.get(SESSIONS_RETENTION_DAYS_ENV)),
         sse_heartbeat_s=_resolve_heartbeat(env.get(SSE_HEARTBEAT_ENV)),

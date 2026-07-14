@@ -64,6 +64,9 @@ async def test_enqueues_task_emits_task_queued_with_full_payload() -> None:
         "model": None,
         "effort": None,
         "conversation_mode": "new",
+        # Issue #109: the per-task auto-sync override rides on task.queued so the
+        # projection can hand it to the dispatcher. None = inherit session > env > True.
+        "auto_sync": None,
     }
 
     # And it was published on the bus exactly once.
@@ -87,6 +90,7 @@ async def test_passes_through_explicit_scheduled_for() -> None:
         "model": None,
         "effort": None,
         "conversation_mode": "new",
+        "auto_sync": None,
     }
 
 
@@ -106,6 +110,7 @@ async def test_records_per_task_effort_on_task_queued_event() -> None:
         "model": None,
         "effort": "high",
         "conversation_mode": "new",
+        "auto_sync": None,
     }
 
 
