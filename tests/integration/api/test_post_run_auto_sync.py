@@ -145,9 +145,9 @@ def test_post_run_auto_sync_invokes_second_launcher_run(
             [{"type": "session.status_idle", "stop_reason": "end_turn"}],
         ]
     )
-    session_id = client.post(
-        "/v1/sessions", json={**session_payload, "auto_sync": True}
-    ).json()["session_id"]
+    session_id = client.post("/v1/sessions", json={**session_payload, "auto_sync": True}).json()[
+        "session_id"
+    ]
     r = client.post(
         f"/v1/sessions/{session_id}/messages",
         json={"content": "do work"},
@@ -225,9 +225,9 @@ def test_post_run_auto_sync_runs_even_when_primary_fails(
             [{"type": "session.status_idle", "stop_reason": "end_turn"}],
         ]
     )
-    session_id = client.post(
-        "/v1/sessions", json={**session_payload, "auto_sync": True}
-    ).json()["session_id"]
+    session_id = client.post("/v1/sessions", json={**session_payload, "auto_sync": True}).json()[
+        "session_id"
+    ]
     client.post(
         f"/v1/sessions/{session_id}/messages",
         json={"content": "go"},
