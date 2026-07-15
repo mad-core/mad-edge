@@ -30,6 +30,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -206,6 +207,99 @@ async def test_create_session_tool_omits_timeout_falls_back_to_default(
     while len(fake_launcher.calls) < 1 and time.monotonic() < deadline:
         await asyncio.sleep(0.05)
     assert fake_launcher.calls[0]["timeout_s"] == 600.0
+
+
+async def test_create_session_tool_threads_auto_sync_false_to_the_gate(
+    client: TestClient, fake_launcher: ScriptedLauncher, tmp_sessions_dir: Path
+) -> None:
+    """MCP parity for the auto-sync gate (hard rule 13, issue #109).
+
+    ``mad_create_session`` calls the same use case as ``POST /v1/sessions``, so
+    ``auto_sync: false`` on the tool payload must suppress the post-run publish
+    run exactly as it does over HTTP: the launcher is invoked ONCE. Polls the
+    session log for the terminal ``agent.autosync.skipped`` (rules 7, 8) — once
+    it is written, ``_run_launcher`` has returned and the call count is final.
+    """
+    fake_launcher.script(
+        [
+            [{"type": "session.status_idle", "stop_reason": "end_turn"}],
+            [{"type": "session.status_idle", "stop_reason": "end_turn"}],
+        ]
+    )
+    async with _mcp_session(client) as s:
+        result = await s.call_tool(
+            "mad_create_session",
+            {
+                "payload": {
+                    "agent": _AGENT,
+                    "resources": [_FILE_RESOURCE],
+                    "auto_sync": False,
+                }
+            },
+        )
+        session_id = _dict_result(result)["session_id"]
+        await s.call_tool(
+            "mad_send_message",
+            {"session_id": session_id, "payload": {"content": "go"}},
+        )
+
+        log_path = tmp_sessions_dir / f"{session_id}.jsonl"
+        deadline = time.monotonic() + 5.0
+        lines: list[dict[str, Any]] = []
+        while time.monotonic() < deadline:
+            if log_path.exists():
+                lines = [json.loads(ln) for ln in log_path.read_text().splitlines() if ln.strip()]
+                if any(e.get("type") == "agent.autosync.skipped" for e in lines):
+                    break
+            await asyncio.sleep(0.05)
+
+    types = [e.get("type") for e in lines]
+    assert "agent.autosync.skipped" in types, (
+        f"expected the auto-sync skip to be recorded; got types={types}"
+    )
+    assert len(fake_launcher.calls) == 1, (
+        "auto_sync=false via MCP must suppress the post-run auto-sync run; "
+        f"launcher prompts were {[c['prompt'] for c in fake_launcher.calls]}"
+    )
+
+
+async def test_create_session_tool_auto_sync_true_keeps_the_post_run_run(
+    client: TestClient, fake_launcher: ScriptedLauncher
+) -> None:
+    """Negative twin of the gate: an explicit ``auto_sync: true`` on the tool
+    payload keeps the post-run publish — the launcher runs twice (primary +
+    auto-sync). Auto-sync is off by default (issue #109), so this opts in
+    explicitly rather than relying on the (now OFF) default."""
+    fake_launcher.script(
+        [
+            [{"type": "session.status_idle", "stop_reason": "end_turn"}],
+            [{"type": "session.status_idle", "stop_reason": "end_turn"}],
+        ]
+    )
+    async with _mcp_session(client) as s:
+        result = await s.call_tool(
+            "mad_create_session",
+            {
+                "payload": {
+                    "agent": _AGENT,
+                    "resources": [_FILE_RESOURCE],
+                    "auto_sync": True,
+                }
+            },
+        )
+        session_id = _dict_result(result)["session_id"]
+        await s.call_tool(
+            "mad_send_message",
+            {"session_id": session_id, "payload": {"content": "go"}},
+        )
+        deadline = time.monotonic() + 5.0
+        while len(fake_launcher.calls) < 2 and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+
+    assert len(fake_launcher.calls) == 2, (
+        f"expected primary + auto-sync runs; got {[c['prompt'] for c in fake_launcher.calls]}"
+    )
+    assert "auto-sync" in fake_launcher.calls[1]["prompt"].lower()
 
 
 # --- tool: mad_send_message --------------------------------------------------

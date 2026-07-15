@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 import mad.adapters.outbound.persistence.jsonl_session_repository as _adapter_log
 import mad.adapters.outbound.persistence.local_workspace_provisioner as _adapter_workspaces
 from mad.adapters.inbound.http import create_app
+from mad.core.config.settings import AUTO_SYNC_ENV
 from support.launchers import ScriptedLauncher
 
 # ---------------------------------------------------------------------------
@@ -28,6 +29,21 @@ def _isolate_clone_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_auto_sync_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear ``MAD_AUTO_SYNC`` for every test (#109).
+
+    The post-run auto-sync gate resolves task > session > ``MAD_AUTO_SYNC`` >
+    ``True``. A dev/CI host that exports ``MAD_AUTO_SYNC=false`` would silently
+    flip the env level for the whole suite and turn every "launcher invoked
+    twice (primary + auto-sync)" assertion into a false failure — the same
+    ambient-environment hazard ``_isolate_clone_credentials`` guards against.
+    Tests that exercise the env level opt in explicitly via
+    ``monkeypatch.setenv`` (which runs after this autouse fixture).
+    """
+    monkeypatch.delenv(AUTO_SYNC_ENV, raising=False)
 
 
 @pytest.fixture

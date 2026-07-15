@@ -67,6 +67,12 @@ class ConfigResponse(BaseModel):
         ...,
         description="Operator default agent wall-clock timeout, seconds (`MAD_AGENT_TIMEOUT_S`).",
     )
+    auto_sync: ConfigEntry[bool] = Field(
+        ...,
+        description="Operator default for the post-run auto-sync publish step; `false` "
+        "suppresses it deployment-wide. Overridable per session and per task "
+        "(`MAD_AUTO_SYNC`).",
+    )
     sessions_dir: ConfigEntry[str] = Field(
         ..., description="Directory holding the per-session JSONL logs (`MAD_SESSIONS_DIR`)."
     )
@@ -116,6 +122,7 @@ def build_config_response(settings: Settings) -> ConfigResponse:
     """
     return ConfigResponse(
         agent_timeout_s=_entry(settings.agent_timeout_s),
+        auto_sync=_entry(settings.auto_sync),
         sessions_dir=_entry(settings.sessions_dir),
         sessions_retention_days=_entry(settings.sessions_retention_days),
         sse_heartbeat_s=_entry(settings.sse_heartbeat_s),

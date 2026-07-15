@@ -29,6 +29,7 @@ class EnqueueTaskInput:
     model: str | None = None
     effort: str | None = None
     conversation_mode: Literal["new", "resume"] = "new"
+    auto_sync: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,7 @@ class EnqueueTaskUseCase:
                 "model": payload.model,
                 "effort": payload.effort,
                 "conversation_mode": payload.conversation_mode,
+                "auto_sync": payload.auto_sync,
             },
         )
         return EnqueueTaskOutput(

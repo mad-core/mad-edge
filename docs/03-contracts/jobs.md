@@ -134,34 +134,63 @@ slot and the task re-dispatches at the next window opening.
 
 ## Auto-sync (post-run job)
 
-Auto-sync is not a scheduled job — it is a **post-run** step that always fires
-once after every primary agent run (issue #8). It lives in
+Auto-sync is not a scheduled job — it is a **post-run** step that may fire once
+after every primary agent run (issue #8), controlled by a resolved `auto_sync`
+boolean gate (issue #109). It lives in
 `src/mad/core/sessions/use_cases/send_user_message.py` (`_run_launcher`) and uses
 the fixed prompt built by
 `src/mad/core/sessions/use_cases/auto_sync_prompt.py`
 (`build_auto_sync_prompt`).
 
-- **Trigger:** after the primary user-prompt run finishes — on success **or**
-  failure — `_run_launcher` launches a second agent run in the same workspace.
+### Auto-sync gate (issue #109)
+
+Auto-sync is **off by default** and opt-in: because it cannot see a branch/PR a
+task manages itself, leaving it on would open a duplicate PR next to the real
+one, so a session or task enables it explicitly when it wants the "don't lose
+work" net. The `auto_sync` boolean is resolved in this precedence order
+(`mad.core.orchestration.domain.auto_sync_config.resolve_effective_auto_sync`):
+
+1. Per-task `auto_sync` (from `POST /v1/sessions/{id}/tasks` body)
+2. Per-session `auto_sync` (from `POST /v1/sessions` body)
+3. `MAD_AUTO_SYNC` environment variable (operator default)
+4. Hard-coded default: `False` (opt-in — do not publish unless asked)
+
+When `auto_sync` resolves to `False`, the post-run second agent run is skipped
+entirely — no `mad/{session_id}` branch and no PR can be created. The decision
+is recorded as a non-terminal `agent.autosync.skipped` event so operators see
+that the skip was deterministic, not an accidental omission.
+
+### Trigger and effect
+
+- **Trigger:** if `auto_sync` resolves to `True`, after the primary user-prompt
+  run finishes — on success **or** failure — `_run_launcher` launches a second
+  agent run in the same workspace.
 - **Effect:** the second run is given a fixed instruction prompt telling the
   agent to inspect `git status` / `git log base..HEAD`, and if there is pending
-  work, create branch `mad/{session_id}` off the session's `base_branch` (or
-  `HEAD`), commit (always excluding `.claude/settings.local.json` and
-  `.claude/settings.json`), push, and open a PR with `gh pr create`; if nothing
-  is pending it prints `auto-sync: nothing to do` and exits 0. Mad does not
-  interpret the run's output (hard rule 1) — all decision logic lives in the
-  prompt; Mad only orchestrates "always run this second prompt at the end".
+  work, intelligently publish it: adopt an existing branch's open PR if present
+  (so a task managing its own branch sees its commits land on the real PR, not a
+  duplicate), or create `mad/{session_id}` as a fallback only when the work has
+  nowhere else to go. The agent always excludes `.claude/settings.local.json`
+  and `.claude/settings.json` from any commit, checks before creating a branch
+  or PR, and never force-pushes. If nothing is pending, it prints
+  `auto-sync: nothing to do` and exits 0. Mad does not interpret the run's
+  output (hard rule 1) — all decision logic lives in the prompt; Mad only
+  orchestrates "run this second prompt, unless auto_sync is False".
 - **Token hygiene:** the prompt instructs that any GitHub token must come from
   the environment and must never be written to the workspace, log, or stdout
   (hard rule 2).
 - **Failure isolation:** an auto-sync failure does not crash the session task —
   it is surfaced as a `session.error` event (and re-raised to the dispatcher
   only when `propagate_failures` is set, so a dispatched task is marked failed).
+  A rate-limit error during auto-sync is a distinct, non-terminal
+  `agent.autosync.rate_limited` event and is swallowed — the primary run already
+  succeeded, so retrying would re-execute the entire coroutine and re-run the
+  already-successful primary prompt (issue #87).
 
-Because auto-sync runs inside `_run_launcher`, a single dispatched task emits
-two `session.status_idle` events (primary run + auto-sync). The dispatcher
-detects task completion by awaiting the `_run_launcher` coroutine, not by
-counting bus events, which keeps the two unambiguous.
+Because auto-sync runs inside `_run_launcher` (when enabled), a single
+dispatched task may emit two `session.status_idle` events (primary run +
+auto-sync). The dispatcher detects task completion by awaiting the `_run_launcher`
+coroutine, not by counting bus events, which keeps the two unambiguous.
 
 ## Side effects: events emitted
 
@@ -173,10 +202,12 @@ stream `GET /v1/events/stream`.
 |---|---|
 | `task.queued` | A task is enqueued (by `enqueue_task`); the dispatcher reacts to this on the bus. |
 | `task.dispatched` | The dispatcher starts a task (`_maybe_dispatch_next`). |
-| `task.completed` | The launcher run (and its auto-sync) finished successfully. |
+| `task.completed` | The launcher run (and its auto-sync, if enabled) finished successfully. |
 | `task.failed` | Terminal failure — non-rate-limit exception, `rate_limit_exhausted` after the 5 h ceiling, or `interrupted_by_restart` orphan recovery. |
 | `task.retrying` | Before each rate-limit backoff sleep (carries `attempt`, `retry_after_s`, `reason`). |
 | `task.deferred` | A rate-limited task is returned to the queue because its work window closed (`reason: "work_window_closed"`, with `scheduled_for`). |
 | `task.queued_for_window` | A freshly queued task cannot dispatch now under a window policy; surfaces the next opening (`scheduled_for`) for the dashboard. |
 | `task.git_result` | After a task completes, if a `GitInspector` is wired (issue #88). Carries `base_sha`, `head_sha`, `head_branch`, `commits`, `dirty`, `pushed` — read-only observation of the workspace git state before and after the agent run. Emission is best-effort: a non-git repo, missing inspector, or git failure causes the event to be omitted silently (never fails the task). |
-| `session.status_idle` / `session.error` | Emitted by the launcher path per run (primary + auto-sync); auto-sync failures surface as `session.error`. |
+| `agent.autosync.skipped` | The resolved `auto_sync` gate is `False`, so the post-run auto-sync run is skipped (`reason: "disabled"`). Non-terminal. |
+| `agent.autosync.rate_limited` | The post-run auto-sync launcher raised `RateLimitError` (issue #87). Non-terminal: this does NOT propagate as a `RateLimitError` to the dispatcher, because the primary run already succeeded; retrying would re-execute the entire coroutine and re-run the already-successful primary prompt. Carries `reason` from the upstream API. |
+| `session.status_idle` / `session.error` | Emitted by the launcher path per run (primary + auto-sync, if enabled); auto-sync failures surface as `session.error`, except `agent.autosync.rate_limited` which is swallowed. |

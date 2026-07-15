@@ -37,6 +37,7 @@ _CREDENTIAL_ENV_VARS = (
 
 _TUNABLE_ENV_VARS = (
     "MAD_AGENT_TIMEOUT_S",
+    "MAD_AUTO_SYNC",
     "MAD_SESSIONS_DIR",
     "MAD_SESSIONS_RETENTION_DAYS",
     "MAD_SSE_HEARTBEAT_S",
@@ -69,6 +70,7 @@ def test_get_config_returns_defaults_when_env_unset(config_client: TestClient) -
     body = r.json()
 
     assert body["agent_timeout_s"] == {"value": 600.0, "source": "default"}
+    assert body["auto_sync"] == {"value": False, "source": "default"}
     assert body["sessions_dir"] == {"value": "sessions", "source": "default"}
     assert body["sessions_retention_days"] == {"value": None, "source": "default"}
     assert body["sse_heartbeat_s"] == {"value": 15.0, "source": "default"}
@@ -113,6 +115,32 @@ def test_get_config_malformed_tunable_reports_default(
     body = config_client.get("/v1/config").json()
 
     assert body["agent_timeout_s"] == {"value": 600.0, "source": "default"}
+
+
+def test_get_config_reports_auto_sync_disabled_from_env(
+    config_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #109: the operator-wide auto-sync default is introspectable. With
+    ``MAD_AUTO_SYNC=false`` exported, the endpoint reports the OFF value and
+    attributes it to the environment."""
+    monkeypatch.setenv("MAD_AUTO_SYNC", "false")
+
+    body = config_client.get("/v1/config").json()
+
+    assert body["auto_sync"] == {"value": False, "source": "env"}
+
+
+def test_get_config_malformed_auto_sync_reports_off_default(
+    config_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Negative twin: a typo'd ``MAD_AUTO_SYNC`` is NOT read as an opt-in. The
+    endpoint reports the OFF default (issue #109) and says so — ``source`` is
+    ``default``, not ``env``, which is how an operator spots the typo."""
+    monkeypatch.setenv("MAD_AUTO_SYNC", "maybe")
+
+    body = config_client.get("/v1/config").json()
+
+    assert body["auto_sync"] == {"value": False, "source": "default"}
 
 
 def test_post_config_is_rejected_read_only(config_client: TestClient) -> None:

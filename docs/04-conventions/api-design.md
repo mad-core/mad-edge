@@ -25,7 +25,7 @@ literal (e.g. `@router.post("/v1/sessions")`), not injected by a router-level
 `prefix=` argument. Adding a `/v2` later is therefore a per-route decision, not
 a global switch.
 
-Routes are split across five router modules, each constructed with an OpenAPI
+Routes are split across six router modules, each constructed with an OpenAPI
 `tags=[...]` label so `/docs` groups them:
 
 | Module | Tag | Surface |
@@ -33,6 +33,7 @@ Routes are split across five router modules, each constructed with an OpenAPI
 | `routes/sessions.py` | `sessions` | session lifecycle: create, send message, get, list, delete, cleanup |
 | `routes/events.py` | `events` | cross-session observability: historical query + SSE stream |
 | `routes/orchestration.py` | `orchestration` | task queue, dispatch policies, priority, global queue |
+| `routes/config.py` | `config` | read-only operational configuration exposure (MAD_* env var resolution) |
 | `routes/providers.py` | `providers` | model discovery, deployment model + reasoning-effort defaults |
 | `routes/workflows.py` | `workflows` | sequential session chaining: create workflow, get workflow status |
 

@@ -127,8 +127,8 @@ async def test_queued_task_dispatches_runs_and_completes(tmp_path: Path) -> None
 
         types = _types_for_session(h.store, "sesn_a")
         # The task lifecycle: queued -> dispatched -> (launcher events) -> completed.
-        # ``_run_launcher`` adds session.status_running + 2x session.status_idle
-        # because of the auto-sync (issue #8).
+        # Auto-sync is off by default (issue #109), so ``_run_launcher`` adds
+        # session.status_running + a single session.status_idle (no second run).
         assert types[0] == "task.queued"
         assert "task.dispatched" in types
         assert "task.completed" in types
@@ -142,8 +142,8 @@ async def test_queued_task_dispatches_runs_and_completes(tmp_path: Path) -> None
         assert dispatched_call[2]["task_id"] == str(output.task_id)
         assert completed_call[2]["task_id"] == str(output.task_id)
 
-        # Launcher was invoked twice (primary + auto-sync).
-        assert len(launcher.calls) == 2
+        # Auto-sync is off by default (issue #109), so the launcher runs once.
+        assert len(launcher.calls) == 1
         assert launcher.calls[0]["prompt"] == "hello"
     finally:
         await h.stop()
@@ -373,5 +373,155 @@ async def test_orphan_recovery_clears_projection_in_flight(tmp_path: Path) -> No
         await _wait_for_event_type(h.store, session_id="sesn_a", event_type="task.failed")
         assert h.projection.in_flight("sesn_a") is None
         assert h.projection.pending_session_ids() == []
+    finally:
+        await h.stop()
+
+
+# -- Post-run auto-sync gate (issue #109) --------------------------------------
+#
+# The dispatcher resolves the gate as task > session > MAD_AUTO_SYNC > False (off
+# by default, opt-in). The task level is the one that fixes the bug: a queued job
+# that manages its own named branch/PR sets ``auto_sync=False``, and the post-run
+# publish run — which cannot see that branch and would open a duplicate PR on
+# ``mad/<session_id>`` — never starts. The observable contract is the launcher
+# CALL COUNT: exactly one invocation (the primary) instead of two.
+#
+# ``test_task_auto_sync_true_wins_over_session_auto_sync_false`` below is the
+# positive twin: an explicit opt-in fires the second (auto-sync) run, so the
+# launcher is invoked twice. ``test_queued_task_dispatches_runs_and_completes``
+# above shows the default: with no override anywhere the launcher runs once.
+
+
+def _scripted_one_run(launcher: ScriptedLauncher) -> None:
+    """Script a single run — the gated case, where auto-sync never fires."""
+    launcher.script([[{"type": "session.status_idle", "stop_reason": "end_turn"}]])
+
+
+async def test_task_auto_sync_false_skips_the_post_run_sync_run(tmp_path: Path) -> None:
+    """A task with ``auto_sync=False`` invokes the launcher exactly once and
+    records ``agent.autosync.skipped`` — no second run, so no duplicate PR."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    sessions = {"sesn_a": _session("sesn_a", workspace)}
+    launcher = ScriptedLauncher()
+    _scripted_one_run(launcher)
+    h = _Harness(sessions, launcher)
+    await h.start()
+    try:
+        await h.enqueue.execute(
+            EnqueueTaskInput(session_id="sesn_a", content="work on my own branch", auto_sync=False)
+        )
+        await _wait_for_event_type(h.store, session_id="sesn_a", event_type="task.completed")
+
+        assert len(launcher.calls) == 1, (
+            "auto_sync=False must suppress the post-run auto-sync run entirely; "
+            f"launcher prompts were {[c['prompt'] for c in launcher.calls]}"
+        )
+        assert launcher.calls[0]["prompt"] == "work on my own branch"
+
+        types = _types_for_session(h.store, "sesn_a")
+        assert "agent.autosync.skipped" in types
+        skipped = next(c for c in h.store.calls if c[1] == "agent.autosync.skipped")
+        assert skipped[2]["reason"] == "disabled"
+        # The skip is non-terminal: the task still completes normally.
+        assert "task.completed" in types
+    finally:
+        await h.stop()
+
+
+async def test_task_auto_sync_false_wins_over_session_auto_sync_true(tmp_path: Path) -> None:
+    """Precedence: the per-task opt-out beats a session that leaves auto-sync on.
+
+    This is the exact shape of issue #109 — a long-lived session with the safety
+    net on, plus one task that owns its branch and PR.
+    """
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    session = _session("sesn_a", workspace)
+    session.auto_sync = True
+    sessions = {"sesn_a": session}
+    launcher = ScriptedLauncher()
+    _scripted_one_run(launcher)
+    h = _Harness(sessions, launcher)
+    await h.start()
+    try:
+        await h.enqueue.execute(
+            EnqueueTaskInput(session_id="sesn_a", content="hello", auto_sync=False)
+        )
+        await _wait_for_event_type(h.store, session_id="sesn_a", event_type="task.completed")
+
+        assert len(launcher.calls) == 1
+        assert "agent.autosync.skipped" in _types_for_session(h.store, "sesn_a")
+    finally:
+        await h.stop()
+
+
+async def test_task_auto_sync_true_wins_over_session_auto_sync_false(tmp_path: Path) -> None:
+    """Negative twin: the per-task opt-IN beats a session that opted out — the
+    launcher runs twice and nothing is skipped."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    session = _session("sesn_a", workspace)
+    session.auto_sync = False
+    sessions = {"sesn_a": session}
+    launcher = ScriptedLauncher()
+    _scripted_two_runs(launcher)
+    h = _Harness(sessions, launcher)
+    await h.start()
+    try:
+        await h.enqueue.execute(
+            EnqueueTaskInput(session_id="sesn_a", content="hello", auto_sync=True)
+        )
+        await _wait_for_event_type(h.store, session_id="sesn_a", event_type="task.completed")
+
+        assert len(launcher.calls) == 2
+        assert "auto-sync" in launcher.calls[1]["prompt"].lower()
+        assert "agent.autosync.skipped" not in _types_for_session(h.store, "sesn_a")
+    finally:
+        await h.stop()
+
+
+async def test_session_auto_sync_false_applies_when_task_leaves_it_unset(
+    tmp_path: Path,
+) -> None:
+    """With no per-task override, the session's opt-out governs the dispatch."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    session = _session("sesn_a", workspace)
+    session.auto_sync = False
+    sessions = {"sesn_a": session}
+    launcher = ScriptedLauncher()
+    _scripted_one_run(launcher)
+    h = _Harness(sessions, launcher)
+    await h.start()
+    try:
+        await h.enqueue.execute(EnqueueTaskInput(session_id="sesn_a", content="hello"))
+        await _wait_for_event_type(h.store, session_id="sesn_a", event_type="task.completed")
+
+        assert len(launcher.calls) == 1
+        assert "agent.autosync.skipped" in _types_for_session(h.store, "sesn_a")
+    finally:
+        await h.stop()
+
+
+async def test_env_auto_sync_false_applies_when_task_and_session_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The operator env default is the last level before the hard-coded True, and
+    it reaches the dispatcher's launcher path."""
+    monkeypatch.setenv("MAD_AUTO_SYNC", "false")
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    sessions = {"sesn_a": _session("sesn_a", workspace)}
+    launcher = ScriptedLauncher()
+    _scripted_one_run(launcher)
+    h = _Harness(sessions, launcher)
+    await h.start()
+    try:
+        await h.enqueue.execute(EnqueueTaskInput(session_id="sesn_a", content="hello"))
+        await _wait_for_event_type(h.store, session_id="sesn_a", event_type="task.completed")
+
+        assert len(launcher.calls) == 1
+        assert "agent.autosync.skipped" in _types_for_session(h.store, "sesn_a")
     finally:
         await h.stop()

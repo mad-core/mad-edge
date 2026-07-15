@@ -35,6 +35,7 @@ tests/
 │   │   └── __init__.py
 │   ├── api/
 │   │   ├── __init__.py
+│   │   ├── test_auto_sync_http.py
 │   │   ├── test_config_http.py
 │   │   ├── test_conversation_id.py
 │   │   ├── test_deployment_effort_http.py
@@ -98,6 +99,7 @@ tests/
 │   │   ├── outbound/
 │   │   │   ├── orchestration/
 │   │   │   │   ├── __init__.py
+│   │   │   │   ├── test_projection_auto_sync.py
 │   │   │   │   └── test_projection_deferred.py
 │   │   │   └── __init__.py
 │   │   ├── persistence/
@@ -127,6 +129,7 @@ tests/
 │   │   ├── orchestration/
 │   │   │   ├── domain/
 │   │   │   │   ├── __init__.py
+│   │   │   │   ├── test_auto_sync_config.py
 │   │   │   │   ├── test_dispatch_policy.py
 │   │   │   │   ├── test_git_result.py
 │   │   │   │   ├── test_ordering.py
@@ -158,6 +161,7 @@ tests/
 │   │   │   │   ├── __init__.py
 │   │   │   │   ├── test_mount_path.py
 │   │   │   │   ├── test_rehydrate.py
+│   │   │   │   ├── test_rehydrate_auto_sync.py
 │   │   │   │   ├── test_rehydrate_effort.py
 │   │   │   │   ├── test_rehydrate_model.py
 │   │   │   │   └── test_session_entity.py

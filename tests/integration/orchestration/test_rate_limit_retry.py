@@ -373,8 +373,15 @@ async def test_auto_sync_rate_limit_does_not_rerun_primary(
     h = _Harness(sessions, launcher)
     await h.start()
     try:
+        # Auto-sync is off by default (issue #109); this test exercises the
+        # post-run auto-sync run itself, so opt in explicitly at the task level.
         await h.enqueue.execute(
-            EnqueueTaskInput(session_id="sesn_as", content="do work", conversation_mode="new")
+            EnqueueTaskInput(
+                session_id="sesn_as",
+                content="do work",
+                conversation_mode="new",
+                auto_sync=True,
+            )
         )
         await _wait_for_event(h.store, session_id="sesn_as", event_type="task.completed")
         # Settle: were the bug present, the spurious retry (fast backoff) would

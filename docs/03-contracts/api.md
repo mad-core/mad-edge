@@ -188,6 +188,30 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         "title": "ConfigEntry[Union[str, NoneType]]",
         "type": "object"
       },
+      "ConfigEntry_bool_": {
+        "properties": {
+          "source": {
+            "description": "`env` when set via the environment variable, `default` when the built-in fallback is in effect.",
+            "enum": [
+              "env",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "value": {
+            "description": "The effective value in force for this process.",
+            "title": "Value",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "value",
+          "source"
+        ],
+        "title": "ConfigEntry[bool]",
+        "type": "object"
+      },
       "ConfigEntry_float_": {
         "properties": {
           "source": {
@@ -270,6 +294,10 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
             "$ref": "#/components/schemas/ConfigEntry_float_",
             "description": "Operator default agent wall-clock timeout, seconds (`MAD_AGENT_TIMEOUT_S`)."
           },
+          "auto_sync": {
+            "$ref": "#/components/schemas/ConfigEntry_bool_",
+            "description": "Operator default for the post-run auto-sync publish step; `false` suppresses it deployment-wide. Overridable per session and per task (`MAD_AUTO_SYNC`)."
+          },
           "claude_cli_bin": {
             "$ref": "#/components/schemas/ConfigEntry_Union_str__NoneType__",
             "description": "Configured `claude` CLI binary override; `null` means auto-detect from PATH (`MAD_CLAUDE_CLI_BIN`)."
@@ -309,6 +337,7 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         },
         "required": [
           "agent_timeout_s",
+          "auto_sync",
           "sessions_dir",
           "sessions_retention_days",
           "sse_heartbeat_s",
@@ -326,6 +355,18 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
         "properties": {
           "agent": {
             "$ref": "#/components/schemas/AgentSpec"
+          },
+          "auto_sync": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional per-session toggle for the post-run auto-sync step, which publishes any leftover uncommitted work to a `mad/<session_id>` branch and opens a PR. Off by default. Set `true` to opt in when this session wants that safety net; leave it off when the session's tasks manage their own named branch/PR (auto-sync cannot see that branch and would open a duplicate PR next to it). Resolution order: per-task `auto_sync` > this value > the `MAD_AUTO_SYNC` env var > `false`. `null` (default) inherits the operator default.",
+            "title": "Auto Sync"
           },
           "base_branch": {
             "anyOf": [
@@ -542,6 +583,18 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
       },
       "EnqueueTaskRequest": {
         "properties": {
+          "auto_sync": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional per-task toggle for the post-run auto-sync step, which publishes any leftover uncommitted work to a `mad/<session_id>` branch and opens a PR. Off by default. Set `true` to opt THIS task in to the safety net; leave it off when the task manages its own named branch/PR (auto-sync cannot see that branch and would open a duplicate PR next to it). Resolution order: this value > the session `auto_sync` > the `MAD_AUTO_SYNC` env var > `false`. `null` (default) inherits.",
+            "title": "Auto Sync"
+          },
           "content": {
             "description": "Opaque payload forwarded verbatim to the launcher.",
             "title": "Content",
@@ -1133,6 +1186,17 @@ OpenAPI dumped from `mad.adapters.inbound.http.asgi:app`. Reconstructable from `
       },
       "TaskResponse": {
         "properties": {
+          "auto_sync": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Sync"
+          },
           "content": {
             "title": "Content",
             "type": "string"

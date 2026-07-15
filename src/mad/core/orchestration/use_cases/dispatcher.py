@@ -46,6 +46,10 @@ from uuid import UUID
 from mad.core.events.domain.event import Event
 from mad.core.events.emitter import EventEmitter
 from mad.core.events.ports.event_bus import EventBus, EventFilter
+from mad.core.orchestration.domain.auto_sync_config import (
+    env_auto_sync,
+    resolve_effective_auto_sync,
+)
 from mad.core.orchestration.domain.deployment_policy import (
     DeploymentDispatchPolicy,
     resolve_effective_policy,
@@ -431,6 +435,14 @@ class Dispatcher:
             session_timeout_s=session.timeout_s,
             env_timeout_s=env_timeout_s(),
         )
+        # Auto-sync precedence is task > session > env > False (issue #109;
+        # off by default). The task level lets a single queued job opt in to the
+        # post-run publish step (or opt out) independently of the session.
+        effective_auto_sync = resolve_effective_auto_sync(
+            task_auto_sync=task.auto_sync,
+            session_auto_sync=session.auto_sync,
+            env_auto_sync=env_auto_sync(),
+        )
 
         attempt = 0
         cumulative_wait_s = 0.0
@@ -452,6 +464,7 @@ class Dispatcher:
                         effort=effective_effort,
                         timeout_s=effective_timeout,
                         conversation_mode=current_conversation_mode,
+                        auto_sync=effective_auto_sync,
                     )
                 except RateLimitError as rl_exc:
                     # Capture conversation ID from the failed run so the next

@@ -118,7 +118,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author the operations catalog when: (1) a new use case is added under any `src/mad/core/*/use_cases/` subpackage (add one row per use case), (2) an HTTP endpoint is added/removed/renamed under `src/mad/adapters/inbound/http/routes/` (keep HTTP and MCP tools in parity per hard rule 13), (3) a tool is added/removed/renamed in `src/mad/adapters/inbound/mcp/server.py` (mirroring the HTTP boundary), or (4) a background component (lifespan-managed asyncio task, app-startup hook, or other no-request-surface operation) is added/removed/renamed that performs observable side effects. Cross-reference each row with its corresponding HTTP route or MCP tool, verify the operation's trigger, and re-describe the observable side effects (events, workspace actions). Ensure HTTP/MCP parity is maintained and the operation's bounded context (sessions, events, orchestration) is accurately placed.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
 - path: docs/01-overview/scope.md
   section: overview
   kind: manual
@@ -192,7 +192,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when a new bounded context appears under `core/`, a new adapter group under `adapters/inbound/` or `adapters/outbound/`, or a new port Protocol under `core/*/ports/`. Renames inside an existing module are captured by source-tree.md and do NOT need a rewrite.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
 - path: docs/02-architecture/data-model.md
   section: architecture
   kind: heuristic
@@ -216,7 +216,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when a field is added/removed on Session (session.py), Event (event.py), or a Task/orchestration entity (task.py, workflow.py, git_result.py), when the JSONL line shape in jsonl_session_repository.py changes, or when the event_id strategy (event_id.py, UUIDv7, ADR-0005) changes. Also update when new deployment-wide config holders are added (e.g., DeploymentEffortConfig) or new exception types appear in the orchestration domain (e.g., workflow exceptions).
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
 - path: docs/02-architecture/source-tree.md
   section: architecture
   kind: deterministic
@@ -296,7 +296,7 @@ docs:
       app_attr: app
   adapted_heuristic: |
     Refresh with `gen_docs api` whenever a route or its request/response model changes under `adapters/inbound/http/`. Keep HTTP and MCP at parity (hard rule 13) — an HTTP route change implies an MCP tool change. Verify all new routes and schemas are reflected in the OpenAPI document; check Pydantic models in routes for field additions or modifications.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
 - path: docs/03-contracts/events-published.md
   section: contracts
   kind: heuristic
@@ -320,7 +320,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Event types are string literals (no central constants module). Re-author when a new `emit(...)` type string appears in a launcher (`adapters/outbound/agents/*`) or a use case, when the hook vocabulary (`agent.<provider>.hook.*`, ADR-0008) changes, or when the Event payload shape (event.py) changes. Verify event tables against all call sites: grep `emit(` under `src/mad/core/**` and `src/mad/adapters/outbound/agents/**` plus the hook router.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
 - path: docs/03-contracts/events-consumed.md
   section: contracts
   kind: heuristic
@@ -367,7 +367,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when dispatcher.py changes its tick cadence (MAD-tick / dispatcher_tick_interval_s), its start/stop lifecycle, the work it dispatches (Task domain or ordering changes), or new event types it emits. The git-result capture (issue #88) added task.git_result emission; future features should be documented in the events table similarly.
-  acknowledged_at_commit: 7d0cd9b75d2c7b08deba5bdc9f4260d54437e1b8
+  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
 - path: docs/03-contracts/external-dependencies.md
   section: contracts
   kind: heuristic
@@ -392,7 +392,7 @@ docs:
     Re-author when a runtime dependency in `pyproject.toml` changes, when a new
     outbound adapter (launcher provider) appears under `outbound/agents/`, or
     when the spawn contract / timeout handling in a launcher changes.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: db4b411c7d95cb508e2423eae428fbce76fd4032
 
 # ---- 04 conventions -----------------------------------------------------
 - path: docs/04-conventions/api-design.md
@@ -415,7 +415,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when route prefixes/tags change, when a route stops declaring a Pydantic body/response_model (hard rule 9 violation), when the HTTP<->MCP parity rule (hard rule 13, ADR-0012) is affected, or when new router modules are added to the five-module table.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
 - path: docs/04-conventions/auth.md
   section: conventions
   kind: heuristic
@@ -440,7 +440,7 @@ docs:
     auth is introduced (today there is none — edge only), or when the token
     hygiene flow (clone token stripped from the remote, hard rule 2) changes.
     Cross-reference docs/05-operations/runbooks/cloudflare-tunnel.md.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: db4b411c7d95cb508e2423eae428fbce76fd4032
 - path: docs/04-conventions/error-handling.md
   section: conventions
   kind: heuristic
@@ -506,7 +506,7 @@ docs:
     Re-author when `[tool.ruff]`, `[tool.mypy]`, `[tool.importlinter]`, or
     `[tool.coverage]` in pyproject.toml change, or when a pre-commit hook is
     added/removed. Cross-reference ADR-0002.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: db4b411c7d95cb508e2423eae428fbce76fd4032
 - path: docs/04-conventions/testing-strategy.md
   section: conventions
   kind: heuristic
@@ -528,7 +528,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when test-layer layout under `tests/` reorganizes, when coverage thresholds in CI/pyproject change, when docs/04-conventions/testing-heuristics.md changes the eight rules, or when new AgentLauncher or orchestration doubles are added to tests/support/. Document all shared doubles explicitly by type and purpose; Fakes live in tests/support (ADR-0003).
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: 3254db3ba6355505740b0a84616551a337015f7c
 - path: docs/04-conventions/testing-heuristics.md
   section: conventions
   kind: manual
@@ -615,7 +615,7 @@ docs:
     class-field names) cannot produce this catalog — keep the entry heuristic
     and hand-authored. Also refresh the credentials/introspection sections when
     `GET /v1/config` / `mad_get_config` change.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
 - path: docs/05-operations/deployment.md
   section: operations
   kind: heuristic
@@ -661,7 +661,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when a Makefile target (install/serve/test/clean) changes, when prerequisites in README change (especially env var resolution logic), when `.env.example` gains/removes a required variable, or when environment variable defaults or fallback behaviors are clarified in README.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
 - path: docs/05-operations/scripts.md
   section: operations
   kind: deterministic
@@ -774,7 +774,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author the tool-family table when a `@mcp.tool` is added, removed, or moves families in `server.py`. Keep the count and family groupings honest; do not duplicate the per-tool catalog in `docs/01-overview/operations.md` — link it instead.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: db4b411c7d95cb508e2423eae428fbce76fd4032
 - path: docs/05-operations/runbooks/cloudflare-tunnel.md
   section: operations
   kind: manual
@@ -814,7 +814,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when the Dockerfile's base image, entrypoint, or build args change, when `compose.example.yml` changes the volume/instance/port model, or when `.env.example` gains/drops a variable this runbook documents.
-  acknowledged_at_commit: ece94c403c5be7257704a42260a13e4c6e185ada
+  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
 - path: docs/05-operations/runbooks/sandbox-bwrap.md
   section: operations
   kind: manual
@@ -947,7 +947,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Mirror CHANGELOG.md verbatim: add new version sections in reverse-chronological order (newest first), preserve existing section structure (Features/Bug Fixes subsections), use exact commit/PR links from source, and maintain the four-field frontmatter. Update repo URLs to match current canonical source (mad-core/mad-edge).
-  acknowledged_at_commit: f8abb798c0de3f4d3ef9abc4b9585f51fda190de
+  acknowledged_at_commit: db4b411c7d95cb508e2423eae428fbce76fd4032
 - path: docs/09-history/migrations.md
   section: history
   kind: heuristic

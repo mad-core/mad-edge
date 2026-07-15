@@ -115,6 +115,19 @@ class CreateSessionRequest(BaseModel):
             "operator default. Must be greater than 0."
         ),
     )
+    auto_sync: bool | None = Field(
+        default=None,
+        description=(
+            "Optional per-session toggle for the post-run auto-sync step, which "
+            "publishes any leftover uncommitted work to a `mad/<session_id>` branch "
+            "and opens a PR. Off by default. Set `true` to opt in when this session "
+            "wants that safety net; leave it off when the session's tasks manage "
+            "their own named branch/PR (auto-sync cannot see that branch and would "
+            "open a duplicate PR next to it). Resolution order: per-task `auto_sync` "
+            "> this value > the `MAD_AUTO_SYNC` env var > `false`. `null` (default) "
+            "inherits the operator default."
+        ),
+    )
 
 
 class SendMessageRequest(BaseModel):
@@ -240,6 +253,7 @@ async def create_session(
             model=payload.model,
             effort=payload.effort,
             timeout_s=payload.timeout_s,
+            auto_sync=payload.auto_sync,
         )
     )
 

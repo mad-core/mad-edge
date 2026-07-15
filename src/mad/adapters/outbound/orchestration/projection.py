@@ -95,6 +95,11 @@ class InMemoryTaskProjection:
         task_id = UUID(event.data["task_id"])
         raw_mode = event.data.get("conversation_mode", "new")
         conversation_mode = raw_mode if raw_mode in ("new", "resume") else "new"
+        # ``None`` (absent, or explicitly null on a pre-#109 event) means "no
+        # per-task override" — the dispatcher then falls back to the session /
+        # env / default chain. Only a literal bool overrides.
+        raw_auto_sync = event.data.get("auto_sync")
+        auto_sync = raw_auto_sync if isinstance(raw_auto_sync, bool) else None
         task = Task(
             task_id=task_id,
             session_id=event.session_id,
@@ -104,6 +109,7 @@ class InMemoryTaskProjection:
             model=event.data.get("model"),
             effort=event.data.get("effort"),
             conversation_mode=conversation_mode,
+            auto_sync=auto_sync,
         )
         self._queued[event.session_id].append(task)
 

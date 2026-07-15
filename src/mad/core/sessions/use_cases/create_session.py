@@ -54,6 +54,10 @@ class CreateSessionInput:
     model: str | None = None
     effort: str | None = None
     timeout_s: float | None = None
+    # Per-session post-run auto-sync override (issue #109). None inherits the
+    # operator default (MAD_AUTO_SYNC > False, off by default); True opts in to
+    # the publish step for this session.
+    auto_sync: bool | None = None
 
 
 @dataclass
@@ -112,6 +116,7 @@ class CreateSessionUseCase:
                 "model": payload.model,
                 "effort": payload.effort,
                 "timeout_s": payload.timeout_s,
+                "auto_sync": payload.auto_sync,
             },
         )
 
@@ -177,6 +182,7 @@ class CreateSessionUseCase:
             model=payload.model,
             effort=payload.effort,
             timeout_s=payload.timeout_s,
+            auto_sync=payload.auto_sync,
             resources_mounted=resources_mounted,
             response=response,
             tokens_to_redact=tokens_to_redact,

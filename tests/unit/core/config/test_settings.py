@@ -16,8 +16,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from mad.core.config.settings import (
     DEFAULT_AGENT_TIMEOUT_S,
+    DEFAULT_AUTO_SYNC,
     DEFAULT_SESSIONS_DIR,
     DEFAULT_SSE_HEARTBEAT_S,
     CredentialFlags,
@@ -51,6 +54,51 @@ def test_agent_timeout_falls_back_on_malformed() -> None:
 def test_agent_timeout_empty_string_is_unset() -> None:
     s = load_settings({"MAD_AGENT_TIMEOUT_S": ""})
     assert s.agent_timeout_s.source == "default"
+
+
+# ---------------------------------------------------------------------------
+# MAD_AUTO_SYNC (issue #109)
+#
+# The operator-level default for the post-run auto-sync publish step. Auto-sync
+# is OFF by default (opt-in): publishing leftover work to a generic
+# ``mad/<session_id>`` branch opens a duplicate PR next to the task's own, so the
+# failure mode that matters is *silently enabling it*. An unset or typo'd value
+# must resolve to the OFF default, never be read as an opt-in, and must report
+# ``source == "default"`` so ``GET /v1/config`` tells the operator the truth
+# about what is in effect. Only a recognised literal flips the source to ``env``.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("raw", ["1", "true", "TRUE", "True", "yes", "on", "  true  "])
+def test_auto_sync_true_literals_read_from_env(raw: str) -> None:
+    """Every accepted truthy spelling parses to True with source=env."""
+    s = load_settings({"MAD_AUTO_SYNC": raw})
+    assert s.auto_sync == Setting(True, "env")
+
+
+@pytest.mark.parametrize("raw", ["0", "false", "FALSE", "False", "no", "off", "  false  "])
+def test_auto_sync_false_literals_read_from_env(raw: str) -> None:
+    """Negative twin of the truthy literals: the OFF spellings parse to False
+    with source=env — an explicit opt-out is honoured, not coerced back to the
+    ON default."""
+    s = load_settings({"MAD_AUTO_SYNC": raw})
+    assert s.auto_sync == Setting(False, "env")
+
+
+def test_auto_sync_defaults_off_when_unset() -> None:
+    """Unset means auto-sync is OFF (opt-in), attributed to the default source."""
+    s = load_settings({})
+    assert s.auto_sync == Setting(DEFAULT_AUTO_SYNC, "default")
+    assert s.auto_sync.value is False
+
+
+@pytest.mark.parametrize("raw", ["maybe", "", "   ", "2", "off!", "disabled"])
+def test_auto_sync_malformed_falls_back_to_off_default(raw: str) -> None:
+    """Negative twin: a blank or unrecognised value must NOT silently ENABLE the
+    publish step. It resolves to the OFF default and reports source=default, so
+    the operator can see their value was not honoured."""
+    s = load_settings({"MAD_AUTO_SYNC": raw})
+    assert s.auto_sync == Setting(False, "default")
 
 
 # ---------------------------------------------------------------------------
