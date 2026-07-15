@@ -105,7 +105,7 @@ Status transitions: `created -> running -> idle`, `created -> running -> error`,
 | `model` | `str \| None` | Per-session model override; `None` means inherit (model precedence resolver). |
 | `effort` | `str \| None` | Per-session reasoning-effort override; `None` means inherit. |
 | `timeout_s` | `float \| None` | Per-session launcher timeout override (issue #61); `None` inherits the operator default. |
-| `auto_sync` | `bool \| None` | Per-session post-run auto-sync override (issue #109); `None` inherits the operator default (MAD_AUTO_SYNC env > True). |
+| `auto_sync` | `bool \| None` | Per-session post-run auto-sync override (issue #109); `None` inherits the operator default (MAD_AUTO_SYNC env > False, off by default). |
 | `resources_mounted` | `list[dict[str, Any]]` | Records of mounted resources (repos, files). |
 | `response` | `dict[str, Any]` | Latest agent response payload. |
 | `tokens_to_redact` | `list[str]` | Secrets to scrub from output (hard rule 2). `repr=False`; not serialized by `to_dict`. |
@@ -185,7 +185,7 @@ The `orchestration` context (`src/mad/core/orchestration/domain/`) governs *how 
 | `model` | `str \| None` | Per-task model override (highest precedence in the model resolver). |
 | `effort` | `str \| None` | Per-task reasoning-effort override (issue #81); highest precedence in the effort resolver (task > session > deployment). |
 | `conversation_mode` | `Literal["new", "resume"]` | Whether to start fresh or resume the session's conversation. |
-| `auto_sync` | `bool \| None` | Per-task post-run auto-sync override (issue #109); highest precedence in the auto-sync resolver (task > session > env > True). `False` suppresses the post-run publish step — useful for tasks managing their own named branch/PR. |
+| `auto_sync` | `bool \| None` | Per-task post-run auto-sync override (issue #109); highest precedence in the auto-sync resolver (task > session > env > False, off by default). `True` opts this task in to the post-run publish step; a task managing its own named branch/PR simply leaves it off. |
 
 ### Dispatch policies (value objects)
 
@@ -213,7 +213,7 @@ These are **mutable process-global singletons** (not per-session), each persiste
 | `DeploymentModelConfig` (`model_config.py`) | `default_model: str \| None` | `__deployment_model__` | task > session > deployment > machine default > `None` |
 | `DeploymentEffortConfig` (`effort_config.py`) | `default_effort: str \| None` | `__deployment_effort__` | task > session > deployment > `None` |
 
-`timeout_config.py` is the parallel knob without a singleton: the operator default lives in the `MAD_AGENT_TIMEOUT_S` env var, and `resolve_effective_timeout` resolves session `timeout_s` > env > `DEFAULT_AGENT_TIMEOUT_S` (600 s). `auto_sync_config.py` follows the same env-only pattern: the operator default lives in the `MAD_AUTO_SYNC` env var, and `resolve_effective_auto_sync` resolves task `auto_sync` > session `auto_sync` > env > True (the default safety net, issue #109). `retry_schedule.py` holds the rate-limit backoff constants (base 30 s, ×2, 1 h per-interval cap, 5 h cumulative ceiling, ±10% jitter) — pure functions, no persisted state.
+`timeout_config.py` is the parallel knob without a singleton: the operator default lives in the `MAD_AGENT_TIMEOUT_S` env var, and `resolve_effective_timeout` resolves session `timeout_s` > env > `DEFAULT_AGENT_TIMEOUT_S` (600 s). `auto_sync_config.py` follows the same env-only pattern: the operator default lives in the `MAD_AUTO_SYNC` env var, and `resolve_effective_auto_sync` resolves task `auto_sync` > session `auto_sync` > env > False (off by default — opt-in, issue #109). `retry_schedule.py` holds the rate-limit backoff constants (base 30 s, ×2, 1 h per-interval cap, 5 h cumulative ceiling, ±10% jitter) — pure functions, no persisted state.
 
 ### Orchestration exceptions
 

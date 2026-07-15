@@ -144,15 +144,16 @@ the fixed prompt built by
 
 ### Auto-sync gate (issue #109)
 
-Auto-sync is disabled on a per-task basis for tasks that manage their own named
-branch and PR — the safety net would otherwise open a duplicate PR next to the
-real one. The `auto_sync` boolean is resolved in this precedence order
+Auto-sync is **off by default** and opt-in: because it cannot see a branch/PR a
+task manages itself, leaving it on would open a duplicate PR next to the real
+one, so a session or task enables it explicitly when it wants the "don't lose
+work" net. The `auto_sync` boolean is resolved in this precedence order
 (`mad.core.orchestration.domain.auto_sync_config.resolve_effective_auto_sync`):
 
 1. Per-task `auto_sync` (from `POST /v1/sessions/{id}/tasks` body)
 2. Per-session `auto_sync` (from `POST /v1/sessions` body)
 3. `MAD_AUTO_SYNC` environment variable (operator default)
-4. Hard-coded default: `True` (keep the safety net)
+4. Hard-coded default: `False` (opt-in — do not publish unless asked)
 
 When `auto_sync` resolves to `False`, the post-run second agent run is skipped
 entirely — no `mad/{session_id}` branch and no PR can be created. The decision
