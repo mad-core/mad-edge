@@ -1,6 +1,16 @@
 # CHANGELOG
 
 
+## v0.6.2 (2026-07-15)
+
+### Bug Fixes
+
+- **config**: Make post-run auto-sync opt-in (off by default)
+  ([`2c1a6dd`](https://github.com/mad-core/mad-edge/commit/2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f))
+- **http**: Gate post-run auto-sync to stop duplicate PRs
+  ([`db4b411`](https://github.com/mad-core/mad-edge/commit/db4b411c7d95cb508e2423eae428fbce76fd4032))
+
+
 ## v0.6.1 (2026-07-04)
 
 ### Features
