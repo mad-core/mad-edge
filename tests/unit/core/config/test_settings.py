@@ -59,11 +59,13 @@ def test_agent_timeout_empty_string_is_unset() -> None:
 # ---------------------------------------------------------------------------
 # MAD_AUTO_SYNC (issue #109)
 #
-# The operator-level default for the post-run auto-sync publish step. This is a
-# safety net against silently losing work, so the failure mode that matters is
-# *silently disabling it*: a typo'd value must resolve to the ON default, never
-# to OFF, and must report ``source == "default"`` so ``GET /v1/config`` tells the
-# operator the truth about what is in effect.
+# The operator-level default for the post-run auto-sync publish step. Auto-sync
+# is OFF by default (opt-in): publishing leftover work to a generic
+# ``mad/<session_id>`` branch opens a duplicate PR next to the task's own, so the
+# failure mode that matters is *silently enabling it*. An unset or typo'd value
+# must resolve to the OFF default, never be read as an opt-in, and must report
+# ``source == "default"`` so ``GET /v1/config`` tells the operator the truth
+# about what is in effect. Only a recognised literal flips the source to ``env``.
 # ---------------------------------------------------------------------------
 
 
@@ -83,20 +85,20 @@ def test_auto_sync_false_literals_read_from_env(raw: str) -> None:
     assert s.auto_sync == Setting(False, "env")
 
 
-def test_auto_sync_defaults_on_when_unset() -> None:
-    """Unset means the safety net stays ON, attributed to the default source."""
+def test_auto_sync_defaults_off_when_unset() -> None:
+    """Unset means auto-sync is OFF (opt-in), attributed to the default source."""
     s = load_settings({})
     assert s.auto_sync == Setting(DEFAULT_AUTO_SYNC, "default")
-    assert s.auto_sync.value is True
+    assert s.auto_sync.value is False
 
 
 @pytest.mark.parametrize("raw", ["maybe", "", "   ", "2", "off!", "disabled"])
-def test_auto_sync_malformed_falls_back_to_on_default(raw: str) -> None:
-    """Negative twin: a blank or unrecognised value must NOT silently disable the
-    safety net. It resolves to the ON default and reports source=default, so the
-    operator can see their value was not honoured."""
+def test_auto_sync_malformed_falls_back_to_off_default(raw: str) -> None:
+    """Negative twin: a blank or unrecognised value must NOT silently ENABLE the
+    publish step. It resolves to the OFF default and reports source=default, so
+    the operator can see their value was not honoured."""
     s = load_settings({"MAD_AUTO_SYNC": raw})
-    assert s.auto_sync == Setting(True, "default")
+    assert s.auto_sync == Setting(False, "default")
 
 
 # ---------------------------------------------------------------------------

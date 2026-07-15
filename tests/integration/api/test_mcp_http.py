@@ -263,11 +263,13 @@ async def test_create_session_tool_threads_auto_sync_false_to_the_gate(
     )
 
 
-async def test_create_session_tool_omits_auto_sync_keeps_the_post_run_run(
+async def test_create_session_tool_auto_sync_true_keeps_the_post_run_run(
     client: TestClient, fake_launcher: ScriptedLauncher
 ) -> None:
-    """Negative twin: with ``auto_sync`` omitted on the tool payload the safety net
-    stays on — the launcher runs twice (primary + auto-sync)."""
+    """Negative twin of the gate: an explicit ``auto_sync: true`` on the tool
+    payload keeps the post-run publish — the launcher runs twice (primary +
+    auto-sync). Auto-sync is off by default (issue #109), so this opts in
+    explicitly rather than relying on the (now OFF) default."""
     fake_launcher.script(
         [
             [{"type": "session.status_idle", "stop_reason": "end_turn"}],
@@ -275,7 +277,17 @@ async def test_create_session_tool_omits_auto_sync_keeps_the_post_run_run(
         ]
     )
     async with _mcp_session(client) as s:
-        session_id = await _make_session(s)
+        result = await s.call_tool(
+            "mad_create_session",
+            {
+                "payload": {
+                    "agent": _AGENT,
+                    "resources": [_FILE_RESOURCE],
+                    "auto_sync": True,
+                }
+            },
+        )
+        session_id = _dict_result(result)["session_id"]
         await s.call_tool(
             "mad_send_message",
             {"session_id": session_id, "payload": {"content": "go"}},

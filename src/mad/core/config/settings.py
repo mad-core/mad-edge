@@ -73,10 +73,13 @@ AWS_ACCESS_KEY_ID_ENV = "AWS_ACCESS_KEY_ID"
 # ---------------------------------------------------------------------------
 
 DEFAULT_AGENT_TIMEOUT_S = 600.0
-#: Auto-sync stays ON by default — it is the "don't silently lose work" safety
-#: net for ad-hoc sessions (issue #109). Sessions/tasks that manage their own
-#: branch/PR opt out explicitly rather than every other session opting in.
-DEFAULT_AUTO_SYNC = True
+#: Auto-sync is OFF by default — it is opt-in (issue #109). Publishing leftover
+#: work to a generic ``mad/<session_id>`` branch is the exception, not the norm:
+#: most sessions/tasks manage their own named branch/PR, and an unrequested
+#: second PR next to the real one is noise a human must clean up. A session that
+#: genuinely wants the "don't silently lose work" net turns it on explicitly
+#: (per-task > per-session > ``MAD_AUTO_SYNC`` env).
+DEFAULT_AUTO_SYNC = False
 DEFAULT_SESSIONS_DIR = "sessions"
 DEFAULT_SSE_HEARTBEAT_S = 15.0
 DEFAULT_HOOK_SOCKET_FALLBACK_BASE = "/tmp"  # noqa: S108 — matches the historical default
@@ -160,7 +163,8 @@ def _resolve_agent_timeout(raw: str | None) -> Setting[float]:
 #: Accepted spellings for the two boolean states of ``MAD_AUTO_SYNC``. Parsing is
 #: case-insensitive and whitespace-tolerant; anything else (including a blank or
 #: malformed value) falls back to :data:`DEFAULT_AUTO_SYNC` rather than crashing
-#: a launch — an operator typo must not silently disable the safety net.
+#: a launch — an operator typo must not silently flip auto-sync on and start
+#: opening unrequested PRs.
 _TRUE_LITERALS: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 _FALSE_LITERALS: frozenset[str] = frozenset({"0", "false", "no", "off"})
 

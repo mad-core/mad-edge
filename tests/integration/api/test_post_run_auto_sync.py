@@ -136,14 +136,18 @@ def test_base_branch_persisted_in_session_log(client: TestClient, repo_with_bran
 def test_post_run_auto_sync_invokes_second_launcher_run(
     client: TestClient, fake_launcher, session_payload: dict
 ) -> None:
-    """The launcher must be invoked twice per user.message: primary + auto-sync."""
+    """With auto-sync opted in, the launcher runs twice per user.message: primary
+    + auto-sync. Auto-sync is off by default (issue #109), so the session sets
+    ``auto_sync: true`` to exercise the post-run publish path."""
     fake_launcher.script(
         [
             [{"type": "session.status_idle", "stop_reason": "end_turn"}],
             [{"type": "session.status_idle", "stop_reason": "end_turn"}],
         ]
     )
-    session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
+    session_id = client.post(
+        "/v1/sessions", json={**session_payload, "auto_sync": True}
+    ).json()["session_id"]
     r = client.post(
         f"/v1/sessions/{session_id}/messages",
         json={"content": "do work"},
@@ -169,7 +173,8 @@ def test_post_run_auto_sync_invokes_second_launcher_run(
 def test_post_run_auto_sync_uses_base_branch_in_prompt(
     repo_with_branches: Path, tmp_sessions_dir: Path, tmp_workspaces_dir: Path
 ) -> None:
-    """The auto-sync prompt must reference the session's base_branch."""
+    """The auto-sync prompt must reference the session's base_branch. Auto-sync is
+    off by default (issue #109), so the session opts in with ``auto_sync: true``."""
     from support.launchers import ScriptedLauncher
 
     fake = ScriptedLauncher()
@@ -184,6 +189,7 @@ def test_post_run_auto_sync_uses_base_branch_in_prompt(
     payload = {
         "agent": {"name": "t", "system": "s", "provider": "fake_scripted"},
         "base_branch": "develop",
+        "auto_sync": True,
         "resources": [
             {
                 "type": "github_repository",
@@ -211,14 +217,17 @@ def test_post_run_auto_sync_uses_base_branch_in_prompt(
 def test_post_run_auto_sync_runs_even_when_primary_fails(
     client: TestClient, fake_launcher, session_payload: dict, tmp_sessions_dir: Path
 ) -> None:
-    """Auto-sync MUST fire even after the primary run reports session.error."""
+    """Auto-sync MUST fire even after the primary run reports session.error.
+    Auto-sync is off by default (issue #109), so the session opts in explicitly."""
     fake_launcher.script(
         [
             [{"type": "session.error", "error": "boom"}],
             [{"type": "session.status_idle", "stop_reason": "end_turn"}],
         ]
     )
-    session_id = client.post("/v1/sessions", json=session_payload).json()["session_id"]
+    session_id = client.post(
+        "/v1/sessions", json={**session_payload, "auto_sync": True}
+    ).json()["session_id"]
     client.post(
         f"/v1/sessions/{session_id}/messages",
         json={"content": "go"},

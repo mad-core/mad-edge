@@ -44,8 +44,14 @@ def _send_and_wait(client: TestClient, fake_launcher: ScriptedLauncher, session_
 
 
 def _base_payload(timeout_s: float | None = None) -> dict:
+    # Auto-sync is off by default (issue #109). These tests verify the resolved
+    # timeout threads to BOTH the primary run and the post-run auto-sync run
+    # (``_send_and_wait`` waits for two launcher calls and
+    # ``test_per_session_timeout_threads_to_launcher`` asserts on ``calls[1]``),
+    # so every session here opts in to auto-sync explicitly.
     payload: dict = {
         "agent": {"name": "t", "system": "s", "provider": "fake_scripted"},
+        "auto_sync": True,
         "resources": [{"type": "file", "content": "x\n", "mount_path": "/workspace/in.txt"}],
     }
     if timeout_s is not None:

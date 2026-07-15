@@ -435,10 +435,9 @@ class Dispatcher:
             session_timeout_s=session.timeout_s,
             env_timeout_s=env_timeout_s(),
         )
-        # Auto-sync precedence is task > session > env > True (issue #109). The
-        # task level is what lets a single queued job that manages its own named
-        # branch/PR suppress the post-run publish step without the whole session
-        # opting out.
+        # Auto-sync precedence is task > session > env > False (issue #109;
+        # off by default). The task level lets a single queued job opt in to the
+        # post-run publish step (or opt out) independently of the session.
         effective_auto_sync = resolve_effective_auto_sync(
             task_auto_sync=task.auto_sync,
             session_auto_sync=session.auto_sync,

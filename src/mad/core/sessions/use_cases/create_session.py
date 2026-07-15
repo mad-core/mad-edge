@@ -55,7 +55,8 @@ class CreateSessionInput:
     effort: str | None = None
     timeout_s: float | None = None
     # Per-session post-run auto-sync override (issue #109). None inherits the
-    # operator default (MAD_AUTO_SYNC > True); False suppresses the publish step.
+    # operator default (MAD_AUTO_SYNC > False, off by default); True opts in to
+    # the publish step for this session.
     auto_sync: bool | None = None
 
 

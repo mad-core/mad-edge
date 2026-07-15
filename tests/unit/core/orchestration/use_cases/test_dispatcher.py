@@ -160,8 +160,8 @@ async def test_queued_task_dispatches_runs_and_completes(tmp_path: Path) -> None
         assert "task.completed" in types
         assert types.index("task.dispatched") < types.index("task.completed")
 
-        # Launcher invoked twice (primary + auto-sync).
-        assert len(launcher.calls) == 2
+        # Auto-sync is off by default (issue #109), so the launcher runs once.
+        assert len(launcher.calls) == 1
         assert launcher.calls[0]["prompt"] == "hello"
 
         # The task_id is consistent across the lifecycle.

@@ -46,8 +46,8 @@ class Session:
     # operator default (MAD_AGENT_TIMEOUT_S env > 600 s) at resolution time.
     timeout_s: float | None = None
     # Per-session post-run auto-sync override (issue #109). None means inherit
-    # the operator default (MAD_AUTO_SYNC env > True) at resolution time; False
-    # suppresses the post-run publish step entirely for this session.
+    # the operator default (MAD_AUTO_SYNC env > False, off by default) at
+    # resolution time; True opts this session in to the post-run publish step.
     auto_sync: bool | None = None
     resources_mounted: list[dict[str, Any]] = field(default_factory=list)
     response: dict[str, Any] = field(default_factory=dict)

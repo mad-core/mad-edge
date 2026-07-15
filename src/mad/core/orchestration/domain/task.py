@@ -40,7 +40,7 @@ class Task:
     effort: str | None = None
     conversation_mode: Literal["new", "resume"] = "new"
     # Per-task post-run auto-sync override (issue #109). ``None`` inherits the
-    # session override, then MAD_AUTO_SYNC, then True. ``False`` suppresses the
-    # post-run publish step for THIS task — the knob a task that manages its own
-    # named branch/PR sets so auto-sync cannot open a duplicate one.
+    # session override, then MAD_AUTO_SYNC, then False (off by default). ``True``
+    # opts THIS task in to the post-run publish step; a task that manages its own
+    # named branch/PR simply leaves it off so auto-sync cannot open a duplicate.
     auto_sync: bool | None = None

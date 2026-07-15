@@ -4,17 +4,18 @@ Mad used to fire a second, unrequested "auto-sync" launcher run after EVERY
 primary run. That run publishes leftover work to a hard-coded ``mad/<session_id>``
 branch and opens a PR — so a task already managing its own named branch/PR got a
 **duplicate** PR next to the real one. The fix is a deterministic gate resolved in
-Mad (task > session > ``MAD_AUTO_SYNC`` > ``True``), not an instruction we hope
-the agent obeys.
+Mad (task > session > ``MAD_AUTO_SYNC`` > ``False`` — off by default, opt-in),
+not an instruction we hope the agent obeys.
 
 The observable contract at this boundary:
 
 * ``POST /v1/sessions`` accepts ``auto_sync`` and persists it on
   ``session.created``, so it survives a rebuild from the log (hard rule 6).
-* With the gate OFF the launcher is invoked **exactly once** (the primary run) —
-  the second run never starts, so no branch and no PR can be created — and a
-  non-terminal ``agent.autosync.skipped`` records the decision for operators.
-* With the gate ON (or left to the default) behaviour is unchanged: **exactly
+* With the gate OFF (the default, or an explicit ``false``) the launcher is
+  invoked **exactly once** (the primary run) — the second run never starts, so no
+  branch and no PR can be created — and a non-terminal ``agent.autosync.skipped``
+  records the decision for operators.
+* With the gate ON (an explicit ``true``) the post-run publish fires: **exactly
   twice**.
 * Both JSON bodies declare the field in OpenAPI as an optional nullable boolean,
   and a non-boolean is rejected at the boundary with 422 (hard rule 9).
@@ -142,25 +143,28 @@ def test_auto_sync_false_invokes_the_launcher_exactly_once(
     assert skipped["reason"] == "disabled"
 
 
-def test_auto_sync_default_invokes_the_launcher_twice(
+def test_auto_sync_default_invokes_the_launcher_exactly_once(
     client: TestClient,
     fake_launcher: ScriptedLauncher,
     bare_repo: Path,
     tmp_sessions_dir: Path,
 ) -> None:
-    """Negative twin: with ``auto_sync`` omitted the safety net stays ON — primary
-    run plus the post-run auto-sync run, exactly as before #109."""
-    _script_two_runs(fake_launcher)
+    """With ``auto_sync`` omitted the gate is OFF by default (issue #109) — the
+    launcher runs exactly once and the skip is recorded, so no duplicate PR. Twin
+    of ``test_auto_sync_true_invokes_the_launcher_twice``."""
+    _script_two_runs(fake_launcher)  # a regression would happily consume the 2nd
     session_id = _create_session(client, _session_body(bare_repo))
 
     client.post(f"/v1/sessions/{session_id}/messages", json={"content": "do work"})
-    _wait_for_launcher_calls(fake_launcher, 2)
+    lines = _wait_for_logged_event(tmp_sessions_dir, session_id, "agent.autosync.skipped")
 
-    assert len(fake_launcher.calls) == 2
+    assert len(fake_launcher.calls) == 1, (
+        "auto_sync omitted must default OFF and suppress the post-run run; launcher "
+        f"prompts were {[c['prompt'] for c in fake_launcher.calls]}"
+    )
     assert fake_launcher.calls[0]["prompt"] == "do work"
-    assert "auto-sync" in fake_launcher.calls[1]["prompt"].lower()
-    types = [e["type"] for e in _read_log(tmp_sessions_dir, session_id)]
-    assert "agent.autosync.skipped" not in types
+    skipped = next(e for e in lines if e["type"] == "agent.autosync.skipped")
+    assert skipped["reason"] == "disabled"
 
 
 def test_auto_sync_true_invokes_the_launcher_twice(

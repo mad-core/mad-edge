@@ -127,8 +127,8 @@ async def test_queued_task_dispatches_runs_and_completes(tmp_path: Path) -> None
 
         types = _types_for_session(h.store, "sesn_a")
         # The task lifecycle: queued -> dispatched -> (launcher events) -> completed.
-        # ``_run_launcher`` adds session.status_running + 2x session.status_idle
-        # because of the auto-sync (issue #8).
+        # Auto-sync is off by default (issue #109), so ``_run_launcher`` adds
+        # session.status_running + a single session.status_idle (no second run).
         assert types[0] == "task.queued"
         assert "task.dispatched" in types
         assert "task.completed" in types
@@ -142,8 +142,8 @@ async def test_queued_task_dispatches_runs_and_completes(tmp_path: Path) -> None
         assert dispatched_call[2]["task_id"] == str(output.task_id)
         assert completed_call[2]["task_id"] == str(output.task_id)
 
-        # Launcher was invoked twice (primary + auto-sync).
-        assert len(launcher.calls) == 2
+        # Auto-sync is off by default (issue #109), so the launcher runs once.
+        assert len(launcher.calls) == 1
         assert launcher.calls[0]["prompt"] == "hello"
     finally:
         await h.stop()
@@ -379,16 +379,17 @@ async def test_orphan_recovery_clears_projection_in_flight(tmp_path: Path) -> No
 
 # -- Post-run auto-sync gate (issue #109) --------------------------------------
 #
-# The dispatcher resolves the gate as task > session > MAD_AUTO_SYNC > True. The
-# task level is the one that fixes the bug: a queued job that manages its own
-# named branch/PR sets ``auto_sync=False``, and the post-run publish run — which
-# cannot see that branch and would open a duplicate PR on ``mad/<session_id>`` —
-# never starts. The observable contract is the launcher CALL COUNT: exactly one
-# invocation (the primary) instead of two.
+# The dispatcher resolves the gate as task > session > MAD_AUTO_SYNC > False (off
+# by default, opt-in). The task level is the one that fixes the bug: a queued job
+# that manages its own named branch/PR sets ``auto_sync=False``, and the post-run
+# publish run — which cannot see that branch and would open a duplicate PR on
+# ``mad/<session_id>`` — never starts. The observable contract is the launcher
+# CALL COUNT: exactly one invocation (the primary) instead of two.
 #
-# ``test_queued_task_dispatches_runs_and_completes`` above is the standing
-# negative twin for the default: with no override anywhere the launcher is
-# invoked twice.
+# ``test_task_auto_sync_true_wins_over_session_auto_sync_false`` below is the
+# positive twin: an explicit opt-in fires the second (auto-sync) run, so the
+# launcher is invoked twice. ``test_queued_task_dispatches_runs_and_completes``
+# above shows the default: with no override anywhere the launcher runs once.
 
 
 def _scripted_one_run(launcher: ScriptedLauncher) -> None:

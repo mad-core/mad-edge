@@ -135,10 +135,11 @@ class EnqueueTaskRequest(BaseModel):
         description=(
             "Optional per-task toggle for the post-run auto-sync step, which publishes"
             " any leftover uncommitted work to a `mad/<session_id>` branch and opens a"
-            " PR. Set `false` when THIS task manages its own named branch/PR —"
-            " auto-sync cannot see that branch and would open a duplicate PR next to"
-            " it. Resolution order: this value > the session `auto_sync` > the"
-            " `MAD_AUTO_SYNC` env var > `true`. `null` (default) inherits."
+            " PR. Off by default. Set `true` to opt THIS task in to the safety net;"
+            " leave it off when the task manages its own named branch/PR (auto-sync"
+            " cannot see that branch and would open a duplicate PR next to it)."
+            " Resolution order: this value > the session `auto_sync` > the"
+            " `MAD_AUTO_SYNC` env var > `false`. `null` (default) inherits."
         ),
     )
 

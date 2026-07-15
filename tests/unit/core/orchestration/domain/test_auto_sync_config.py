@@ -1,16 +1,17 @@
 """Unit tests for the post-run auto-sync gate resolver (issue #109).
 
-Precedence is task > session > env > ``True``. The load-bearing property — and
-the whole reason the bug existed — is that ``False`` is a *value*, not an
-absence: a task that manages its own named branch/PR sets ``auto_sync=False``
-and that MUST beat a ``True`` at every less-specific level. A truthiness check
-(``task_auto_sync or session_auto_sync or ...``) would silently fall through and
-re-open the duplicate PR this issue is about, so each level is pinned with the
-``False``-beats-``True`` case as its negative twin.
+Precedence is task > session > env > ``False`` (off by default; opt-in). The
+load-bearing property — and the whole reason the bug existed — is that ``False``
+is a *value*, not an absence: a task that manages its own named branch/PR sets
+``auto_sync=False`` and that MUST beat a ``True`` at every less-specific level. A
+truthiness check (``task_auto_sync or session_auto_sync or ...``) would silently
+fall through and re-open the duplicate PR this issue is about, so each level is
+pinned with the ``False``-beats-``True`` case as its negative twin.
 
 ``env_auto_sync()`` is the env reader: it returns ``None`` unless the central
 settings loader attributes the value to ``source == "env"``, so a malformed
-``MAD_AUTO_SYNC`` leaves the safety net ON rather than disabling it.
+``MAD_AUTO_SYNC`` reads as ``None`` and the resolver falls back to its
+off-by-default state rather than treating the typo as an explicit value.
 """
 
 from __future__ import annotations
@@ -29,13 +30,14 @@ from mad.core.orchestration.domain.auto_sync_config import (
 # ---------------------------------------------------------------------------
 
 
-def test_all_levels_unset_keeps_the_safety_net_on() -> None:
+def test_all_levels_unset_defaults_off() -> None:
     """Negative twin of every override case: with nothing set anywhere, auto-sync
-    is ON. There is no ``None`` sentinel — every run either syncs or does not."""
+    is OFF (opt-in). There is no ``None`` sentinel — every run either syncs or
+    does not."""
     result = resolve_effective_auto_sync(
         task_auto_sync=None, session_auto_sync=None, env_auto_sync=None
     )
-    assert result is True
+    assert result is False
     assert result == DEFAULT_AUTO_SYNC
 
 
@@ -171,7 +173,7 @@ def test_env_auto_sync_is_none_when_unset(monkeypatch: pytest.MonkeyPatch) -> No
 @pytest.mark.parametrize("raw", ["maybe", "", "   ", "2"])
 def test_env_auto_sync_is_none_when_malformed(raw: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """Negative twin of the ``"false"`` read: a typo must NOT be interpreted as an
-    opt-out. It reports None, the resolver falls back to True, and the safety net
-    stays on."""
+    opt-in. It reports None, so the resolver falls back to its default (False,
+    off) rather than silently switching auto-sync on."""
     monkeypatch.setenv(AUTO_SYNC_ENV_VAR, raw)
     assert env_auto_sync() is None

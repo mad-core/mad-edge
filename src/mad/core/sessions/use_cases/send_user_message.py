@@ -144,7 +144,7 @@ async def _run_launcher(
     effort: str | None = None,
     timeout_s: float | None = None,
     conversation_mode: str = "new",
-    auto_sync: bool = True,
+    auto_sync: bool = False,
 ) -> None:
     """Internal coroutine: run the launcher and handle lifecycle events.
 
@@ -182,11 +182,12 @@ async def _run_launcher(
     ``agent.conversation_resume_skipped``.
 
     ``auto_sync`` is the resolved post-run publish gate (issue #109): task >
-    session > ``MAD_AUTO_SYNC`` env > ``True``. When ``False``, the post-run
-    auto-sync run is skipped ENTIRELY — no second ``launcher.run``, so no
-    ``mad/<session_id>`` branch and no PR can be created. This is the
-    deterministic opt-out for tasks that manage their own named branch/PR, which
-    auto-sync cannot see and would otherwise duplicate. A non-terminal
+    session > ``MAD_AUTO_SYNC`` env > ``False`` (off by default — opt-in). When
+    ``False``, the post-run auto-sync run is skipped ENTIRELY — no second
+    ``launcher.run``, so no ``mad/<session_id>`` branch and no PR can be created.
+    A session opts IN (``True``) when it wants the "don't silently lose work"
+    net; auto-sync cannot see a task's own named branch and would otherwise
+    duplicate it, so publishing is the exception, not the norm. A non-terminal
     ``agent.autosync.skipped`` event records the decision for operators.
     """
     await emitter.emit(session_id, "session.status_running")

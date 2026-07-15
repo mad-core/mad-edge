@@ -59,19 +59,37 @@ def _create_session(client: TestClient, payload: dict) -> dict:
 def _send_and_wait(
     client: TestClient, fake_launcher, session_id: str, content: str = "do work"
 ) -> None:
-    fake_launcher.script(
-        [
-            [{"type": "session.status_idle", "stop_reason": "end_turn"}],
-            [{"type": "session.status_idle", "stop_reason": "end_turn"}],
-        ]
-    )
+    # Auto-sync is off by default (issue #109), so a message drives exactly one
+    # launcher run (the primary). These tests assert only on the primary run's
+    # working directory (``calls[0]``); the post-run auto-sync run is unrelated to
+    # the cwd contract under test, so the one-call default is the faithful reality.
+    #
+    # Wait on the SETTLED terminal signal, not on ``len(calls) < 1``: the gate
+    # emits ``agent.autosync.skipped`` after ``_run_launcher`` has passed the
+    # publish decision, so its presence proves no second run will follow. Polling
+    # the call count alone would assert ``== 1`` the instant the primary lands and
+    # could false-green if a regression re-enabled auto-sync-by-default (the second
+    # run would arrive after the assert). If auto-sync ever regresses on, the skip
+    # event never appears and this times out on the explicit presence assertion.
+    fake_launcher.script([[{"type": "session.status_idle", "stop_reason": "end_turn"}]])
     r = client.post(f"/v1/sessions/{session_id}/messages", json={"content": content})
     assert r.status_code == 200, r.text
     deadline = time.monotonic() + 5.0
-    while len(fake_launcher.calls) < 2 and time.monotonic() < deadline:
+    skipped = False
+    while time.monotonic() < deadline:
+        detail = client.get(f"/v1/sessions/{session_id}")
+        assert detail.status_code == 200, detail.text
+        if any(e.get("type") == "agent.autosync.skipped" for e in detail.json()["events"]):
+            skipped = True
+            break
         time.sleep(0.05)
-    assert len(fake_launcher.calls) == 2, (
-        f"expected 2 launcher invocations (primary + auto-sync), got {len(fake_launcher.calls)}"
+    assert skipped, (
+        "expected an 'agent.autosync.skipped' event (auto-sync off by default) — "
+        "its absence means auto-sync ran, i.e. the default regressed to on"
+    )
+    assert len(fake_launcher.calls) == 1, (
+        f"expected exactly one launcher invocation (auto-sync off by default), "
+        f"got {len(fake_launcher.calls)}"
     )
 
 

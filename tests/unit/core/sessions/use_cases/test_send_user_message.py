@@ -57,7 +57,9 @@ async def test_send_message_runs_launcher_and_redacts_tokens():
     """
     repo = FakeRepo()
     token = "ghp_secretXYZ"
-    sessions = {"sesn_msg": _make_session(tokens=[token])}
+    # Opt in to auto-sync (off by default, issue #109) so the launcher runs
+    # twice — this test asserts on the two-run event sequence below.
+    sessions = {"sesn_msg": _make_session(tokens=[token], auto_sync=True)}
     bus = FakeEventBus()
 
     class ScriptedLauncher:
@@ -105,7 +107,8 @@ async def test_post_run_auto_sync_invokes_second_launcher_run():
     second time with the auto-sync instruction prompt (issue #8).
     """
     repo = FakeRepo()
-    sessions = {"sesn_msg": _make_session()}
+    # Auto-sync is off by default (issue #109); opt in so the second run fires.
+    sessions = {"sesn_msg": _make_session(auto_sync=True)}
     sessions["sesn_msg"].base_branch = "develop"
     bus = FakeEventBus()
 
@@ -129,7 +132,9 @@ async def test_post_run_auto_sync_invokes_second_launcher_run():
 async def test_post_run_auto_sync_runs_even_when_primary_fails():
     """Auto-sync must run even when the primary launcher raises (issue #8)."""
     repo = FakeRepo()
-    sessions = {"sesn_msg": _make_session()}
+    # Opt in to auto-sync (off by default, issue #109): this test asserts the
+    # second run fires even after the primary fails.
+    sessions = {"sesn_msg": _make_session(auto_sync=True)}
     bus = FakeEventBus()
 
     calls: list[str] = []
@@ -157,7 +162,9 @@ async def test_post_run_auto_sync_runs_even_when_primary_fails():
 async def test_post_run_auto_sync_failure_emits_session_error():
     """If the auto-sync run itself raises, surface it as session.error (issue #8)."""
     repo = FakeRepo()
-    sessions = {"sesn_msg": _make_session()}
+    # Opt in to auto-sync (off by default, issue #109) so the failing second run
+    # under test actually runs.
+    sessions = {"sesn_msg": _make_session(auto_sync=True)}
     bus = FakeEventBus()
 
     calls: list[int] = []
@@ -197,7 +204,9 @@ async def test_post_run_auto_sync_rate_limit_is_non_terminal_not_session_error()
     leaving the session idle (the primary run succeeded).
     """
     repo = FakeRepo()
-    sessions = {"sesn_msg": _make_session()}
+    # Opt in to auto-sync (off by default, issue #109) so the rate-limited second
+    # run under test actually runs.
+    sessions = {"sesn_msg": _make_session(auto_sync=True)}
     bus = FakeEventBus()
 
     calls: list[int] = []
@@ -312,11 +321,12 @@ async def test_session_auto_sync_true_still_runs_the_post_run_launcher_run():
     assert "agent.autosync.skipped" not in types
 
 
-async def test_auto_sync_defaults_on_when_session_leaves_it_unset(
+async def test_auto_sync_defaults_off_when_session_leaves_it_unset(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """``auto_sync=None`` (the default) inherits the ON default — the safety net
-    is opt-OUT, so an ad-hoc session cannot silently lose work."""
+    """``auto_sync=None`` (the default) inherits the OFF default (issue #109) —
+    auto-sync is opt-IN, so an ad-hoc session does not open an unrequested PR. The
+    launcher runs exactly once and the skip is recorded."""
     monkeypatch.delenv(AUTO_SYNC_ENV_VAR, raising=False)
     repo = FakeRepo()
     sessions = {"sesn_msg": _make_session(auto_sync=None)}
@@ -324,10 +334,11 @@ async def test_auto_sync_defaults_on_when_session_leaves_it_unset(
     uc = _make_uc(sessions, lambda name: launcher, repo, FakeEventBus())
 
     uc.execute(SendUserMessageInput(session_id="sesn_msg", content="do work"))
-    await _wait_for_calls(launcher, 2)
+    await _wait_for_event(repo, "agent.autosync.skipped")
 
-    assert len(launcher.calls) == 2
-    assert "agent.autosync.skipped" not in [e["type"] for e in repo.events]
+    assert len(launcher.calls) == 1
+    skipped = next(e for e in repo.events if e["type"] == "agent.autosync.skipped")
+    assert skipped["reason"] == "disabled"
 
 
 async def test_env_auto_sync_false_skips_post_run_run_when_session_unset(
@@ -435,10 +446,10 @@ async def test_publishes_every_appended_event_to_the_event_bus():
 
     repo_types = [e["type"] for e in repo.events]
     bus_types = [e.type for e in bus.published]
-    # Every event appended to the repo must also appear on the bus, in
-    # the same order. Auto-sync (issue #8) fires a second launcher run,
-    # so the launcher emits `agent.output` and `session.status_idle`
-    # twice in a row — both are persisted and published.
+    # Every event appended to the repo must also appear on the bus, in the same
+    # order. Auto-sync is off by default (issue #109), so the single launcher run
+    # is followed by a non-terminal `agent.autosync.skipped` — both the run's
+    # events and the skip are persisted and published.
     assert repo_types == bus_types
     assert all(e.session_id == "sesn_msg" for e in bus.published)
 

@@ -38,7 +38,8 @@ def rehydrate_from_events(session_id: str, events: list[dict[str, Any]]) -> Sess
     effort: str | None = None
     timeout_s: float | None = None
     # ``None`` means "no per-session override" — the session inherits the
-    # operator default (MAD_AUTO_SYNC > True) at resolution time (issue #109).
+    # operator default (MAD_AUTO_SYNC > False, off by default) at resolution
+    # time (issue #109).
     auto_sync: bool | None = None
     status = "created"
     created_at: datetime | None = None
