@@ -528,7 +528,7 @@ docs:
     type: manual
   adapted_heuristic: |
     Re-author when test-layer layout under `tests/` reorganizes, when coverage thresholds in CI/pyproject change, when docs/04-conventions/testing-heuristics.md changes the eight rules, or when new AgentLauncher or orchestration doubles are added to tests/support/. Document all shared doubles explicitly by type and purpose; Fakes live in tests/support (ADR-0003).
-  acknowledged_at_commit: 2c1a6dd28e3f16a6ed1ff5aba4368802f7cf799f
+  acknowledged_at_commit: 3254db3ba6355505740b0a84616551a337015f7c
 - path: docs/04-conventions/testing-heuristics.md
   section: conventions
   kind: manual
